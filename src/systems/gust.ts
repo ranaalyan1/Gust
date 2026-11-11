@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, Group, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, createSystem, NoToneMapping, IcosahedronGeometry, MeshBasicMaterial, AdditiveBlending } from '@iwsdk/core';
+import { Color, Group, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, createSystem, NoToneMapping, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -44,7 +44,7 @@ import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloo
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
 import { SeedViews, buildDandelion } from '../render/seeds.js';
-import { Birds, CloudSea, PalmMarker, ShockRings, Sunbeam, ThermalColumn } from '../render/extras.js';
+import { Birds, CloudSea, PalmMarker, ShockRings, Sunbeam, ThermalColumn, softLightMaterial } from '../render/extras.js';
 
 /** Simulation metres per real metre: the world is a 1:7 miniature. */
 const UNIT = 7;
@@ -189,8 +189,8 @@ export class GustSystem extends createSystem({}) {
     this.sunbeam = new Sunbeam();
     this.reliefColumn = new ThermalColumn(0.9, 5.4, 0xfff0b8);
     this.breath = new Mesh(
-      new IcosahedronGeometry(0.5, 1),
-      new MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending, fog: false }),
+      new IcosahedronGeometry(0.6, 3),
+      softLightMaterial(0xbfe0ff, 2.6),
     );
     this.breath.visible = false;
     this.root.add(
@@ -583,7 +583,8 @@ export class GustSystem extends createSystem({}) {
     this.foliage.populate(view, {
       trees: home ? 1 : lush ? 2 : 2,
       flowers: home ? 10 : 22,
-      keepClear: isStart ? [{ x: d.x - island.center.x, z: d.z - island.center.z, r: 0.5 }] : [],
+      // where this island's dandelion stands, or will stand once the seed has taken root
+      keepClear: [isStart ? { x: d.x - island.center.x, z: d.z - island.center.z, r: 0.5 } : { x: island.rx * 0.38, z: 0, r: 0.5 }],
     });
     if (home) this.foliage.plantGarden(view, this.game.garden, -1);
     return view;
@@ -816,7 +817,7 @@ export class GustSystem extends createSystem({}) {
     }
     this.breath.visible = breath > 0.02;
     if (this.breath.visible) {
-      (this.breath.material as MeshBasicMaterial).opacity = 0.34 * breath;
+      (this.breath.material as ShaderMaterial).uniforms.uOpacity.value = 0.5 * breath;
       this.breath.scale.setScalar(0.7 + 0.5 * breath + 0.06 * Math.sin(time * 14));
     }
     this.streaks.weatherColor.copy(this.sky.sunColor).lerp(WHITE, 0.25);

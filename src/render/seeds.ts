@@ -124,8 +124,8 @@ export class SeedViews {
         void main() {
           float d = length(gl_PointCoord - 0.5) * 2.0;
           if (d > 1.0) discard;
-          float halo = pow(1.0 - d, 2.4) * 0.55;
-          float core = smoothstep(0.22, 0.0, d) * 0.9;
+          float halo = pow(1.0 - d, 3.0) * 0.3;
+          float core = smoothstep(0.12, 0.0, d) * 0.3;
           gl_FragColor = vec4(vColor * (halo + core), 1.0);
           #include <colorspace_fragment>
         }`,
@@ -171,7 +171,7 @@ export class SeedViews {
             dz / l + axis.z * 0.25 + Math.cos(time * 27 + i * 2) * tremble,
           );
         }
-        glow *= flock ? 0.55 : 1;
+        glow *= flock ? 0.16 : 1; // a full head glows as one, not as twenty
       } else if (s.status === 'planted') {
         // the seed sinks into the soil and its light goes into the ground
         const t = Math.min(1, s.restTime / 1.4);
@@ -184,6 +184,7 @@ export class SeedViews {
         scale *= 1 - t;
         glow *= 1 - t;
       }
+      if (flock && s.status === 'flying') glow *= 0.6;
       if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0);
       axis.normalize();
       qa.setFromUnitVectors(up, axis);
@@ -200,7 +201,7 @@ export class SeedViews {
       this.glowColor[j] = this.glowTint.r * glow;
       this.glowColor[j + 1] = this.glowTint.g * glow;
       this.glowColor[j + 2] = this.glowTint.b * glow;
-      this.glowSize[n] = (flock ? 0.7 : 1.15) * (0.8 + 0.25 * glow) * (scale > 0.02 ? 1 : 0);
+      this.glowSize[n] = (flock ? 0.6 : 1.0) * (0.8 + 0.25 * Math.min(glow, 2.5)) * (scale > 0.02 ? 1 : 0);
       n++;
     }
     this.mesh.count = n;

@@ -184,30 +184,68 @@ export function updateBloom(view: IslandView, dt: number, speed = 1.5): void {
   if (view.bloom.w >= view.bloomTarget) view.bloom.z = 0;
 }
 
-/** Stone obstacles: tunnel slabs and spires, chiselled a little so they read as rock. */
+const MOSS = new Color(0x6f9a5a);
+const LICHEN = new Color(0xb9b3a0);
+
+/**
+ * Stone obstacles: the storm gate's slabs and the spires. A collision box is a
+ * box; what is drawn is weathered rock carved out of it — never larger than the
+ * box, so nothing ever collides with air that looks empty from outside it.
+ *   below the flight line -> tapers downward like an island's root
+ *   above the flight line -> tapers upward into a broken crown
+ */
 export function buildObstacle(o: Obstacle, key: number): Mesh {
   const material = new MeshLambertMaterial({ vertexColors: true, flatShading: true });
   let geometry;
   if (o.kind === 'box') {
-    geometry = new BoxGeometry(o.half.x * 2, o.half.y * 2, o.half.z * 2, 4, 3, 3).toNonIndexed();
+    const sx = Math.max(2, Math.round(o.half.x * 4.5));
+    const sy = Math.max(3, Math.round(o.half.y * 5));
+    const sz = Math.max(2, Math.round(o.half.z * 4.5));
+    geometry = new BoxGeometry(o.half.x * 2, o.half.y * 2, o.half.z * 2, sx, sy, sz).toNonIndexed();
   } else {
     geometry = new IcosahedronGeometry(o.radius, 1);
   }
   const pos = geometry.getAttribute('position');
   const colors = new Float32Array(pos.count * 3);
+  const box = o.kind === 'box';
+  const hx = box ? o.half.x : o.radius, hy = box ? o.half.y : o.radius, hz = box ? o.half.z : o.radius;
+  // which way does this rock taper? (walls only get chiselled)
+  const role = !box ? 0 : o.center.y - hy > 1.2 ? 1 : o.center.y < 0 ? -1 : 0;
+  const hashAt = (x: number, y: number, z: number, salt: number) =>
+    hash01(key * 7 + salt + Math.round(x * 37) * 3 + Math.round(y * 41) * 5 + Math.round(z * 43) * 7);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    // chisel: pull vertices inward by a position-hashed amount (never outward, so collision stays conservative)
-    const h = hash01(key + Math.round(x * 37) * 3 + Math.round(y * 41) * 5 + Math.round(z * 43) * 7);
-    const k = 1 - h * 0.06;
-    pos.setXYZ(i, x * k, y * (1 - h * 0.03), z * k);
+    const h = hashAt(x, y, z, 0);
+    const h2 = hashAt(x, y, z, 11);
+    const u = x / hx, v = y / hy, w = z / hz;
+    let k = 1 - h * 0.07;
+    let ny = y * (1 - h * 0.03);
+    if (role !== 0) {
+      // t: 0 on the face the seed flies past, 1 at the far tip
+      const t = role < 0 ? (1 - v) * 0.5 : (1 + v) * 0.5;
+      k = 1 - 0.62 * Math.pow(t, 1.6) - h * 0.1 * (0.3 + t);
+      // strata: ledges step in and out a little
+      k -= 0.05 * (Math.sin(v * 9 + key) > 0.3 ? 1 : 0) * t;
+      // the far tip is broken, not flat
+      ny = y + (role < 0 ? 1 : -1) * h2 * 0.5 * hy * t * t;
+      if (t < 0.02) ny = y; // the flight-side face stays true to the collision box
+    }
+    // soften the vertical corners
+    if (Math.abs(u) > 0.98 && Math.abs(w) > 0.98) k *= 0.93;
+    pos.setXYZ(i, x * k, ny, z * k);
   }
+  geometry.computeVertexNormals();
+  const nrm = geometry.getAttribute('normal');
   for (let i = 0; i < pos.count; i += 3) {
     const h = hash01(key * 3 + i * 11);
     const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
-    const span = o.kind === 'box' ? o.half.y : o.radius;
-    c1.copy(STONE).lerp(ROCK_DEEP, 0.35 - 0.35 * Math.min(1, Math.max(-1, y / span)));
-    shade(c1, c1, (h - 0.5) * 0.22);
+    const up = (nrm.getY(i) + nrm.getY(i + 1) + nrm.getY(i + 2)) / 3;
+    c1.copy(STONE).lerp(ROCK_DEEP, 0.35 - 0.35 * Math.min(1, Math.max(-1, y / hy)));
+    // bands of paler stone
+    if (Math.sin((y / hy) * 7 + key * 1.3) > 0.55) c1.lerp(LICHEN, 0.22);
+    // anything that faces the sky gathers moss
+    if (up > 0.6) c1.lerp(MOSS, 0.35 + 0.35 * h);
+    shade(c1, c1, (h - 0.5) * 0.24);
     for (let j = 0; j < 3; j++) {
       colors[(i + j) * 3] = c1.r;
       colors[(i + j) * 3 + 1] = c1.g;
@@ -215,7 +253,6 @@ export function buildObstacle(o: Obstacle, key: number): Mesh {
     }
   }
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
   const mesh = new Mesh(geometry, material);
   mesh.position.set(o.center.x, o.center.y, o.center.z);
   return mesh;

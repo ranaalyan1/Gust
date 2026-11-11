@@ -87,14 +87,14 @@ export class WindStreaks {
     let x: number, y: number, z: number;
     const hands = s.hands;
     const activeHands = (hands[0]?.active ? 1 : 0) + (hands[1]?.active ? 1 : 0);
-    if (r < 0.55 && activeHands > 0) {
+    if (r < 0.42 && activeHands > 0) {
       // in front of a palm, where its wind is
       let h = hands[Math.random() < 0.5 ? 0 : 1];
       if (!h || !h.active) h = hands[0]?.active ? hands[0] : hands[1];
-      const d = Math.random() * 1.1;
-      x = h.x + h.nx * d + (Math.random() - 0.5) * 0.9;
-      y = h.y + h.ny * d + (Math.random() - 0.5) * 0.9;
-      z = h.z + h.nz * d + (Math.random() - 0.5) * 0.9;
+      const d = Math.random() * 1.7;
+      x = h.x + h.nx * d + (Math.random() - 0.5) * 1.9;
+      y = h.y + h.ny * d + (Math.random() - 0.5) * 1.0;
+      z = h.z + h.nz * d + (Math.random() - 0.5) * 1.9;
     } else if (r < 0.8 && s.hotspots.length > 0) {
       const h = s.hotspots[(Math.random() * s.hotspots.length) | 0];
       const a = Math.random() * 6.283;
@@ -119,7 +119,7 @@ export class WindStreaks {
     const { head, tail, life, maxLife, positions, colors } = this;
     const hc = this.handColor;
     const wc = this.weatherColor;
-    const kTail = 1 - Math.exp(-7 * dt);
+    const kTail = 1 - Math.exp(-9 * dt);
     for (let i = 0; i < this.n; i++) {
       const j = i * 3;
       life[i] -= dt;
@@ -142,7 +142,7 @@ export class WindStreaks {
       const fade = Math.min(1, t * 5) * Math.min(1, (1 - t) * 6);
       let a = Math.min(1, Math.max(0, (speed - 0.5) / 3.2)) * fade * intensity;
       const share = speed > 1e-4 ? Math.min(1, pSpeed / speed) : 0;
-      a *= 0.42 + 0.58 * share;
+      a *= (0.42 + 0.58 * share) * 0.5;
       const cr = wc.r + (hc.r - wc.r) * share;
       const cg = wc.g + (hc.g - wc.g) * share;
       const cb = wc.b + (hc.b - wc.b) * share;

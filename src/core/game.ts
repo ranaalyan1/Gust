@@ -444,6 +444,8 @@ export class Game {
       const s = seeds[i];
       const before = s.status;
       env.rain = this.rain > 0 && before === 'flying' ? this.rain * this.field.exposure(s.pos) : 0;
+      // once a head has begun to shed, the rest hang by a thread: the next breath takes them all
+      if (flock && this.anyReleased && before === 'attached' && s.pluck < 0.8) s.pluck = 0.8;
       const after = stepSeed(s, this.field, dt, this.seedParams, env);
 
       if (before === 'attached' && after === 'flying') {
@@ -525,7 +527,7 @@ export class Game {
       } else if (this.phase === 'flight') {
         const settled = attached === 0 && flying === 0;
         const enough = this.planted >= this.need;
-        const lingering = enough && this.sinceLastPlant > 7 && attached === 0;
+        const lingering = enough && this.sinceLastPlant > (attached === 0 ? 6 : 12);
         const overtime = this.flightTime > 80;
         if (settled || lingering || overtime) {
           for (let i = 0; i < this.seeds.length; i++) {

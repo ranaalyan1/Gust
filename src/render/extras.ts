@@ -22,6 +22,7 @@ import {
   Quaternion,
   RingGeometry,
   TorusGeometry,
+  ShaderMaterial,
   Vector3,
 } from '@iwsdk/core';
 import type { HandSample } from '../core/hands.js';
@@ -132,16 +133,52 @@ export class CloudSea {
 
 // ── thermals: warm rising columns you can see ───────────────────────────────
 
+/**
+ * A soft volume of light: brightest where the surface faces the eye, dissolving
+ * to nothing at its silhouette, so cylinders read as shafts and spheres as orbs
+ * with no hard edge anywhere. `vFade` optionally fades it along its height (uv.y).
+ */
+export function softLightMaterial(color: number, power = 3, heightFade = false): ShaderMaterial {
+  return new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    uniforms: { uColor: { value: new Color(color) }, uOpacity: { value: 0 }, uPower: { value: power }, uFade: { value: heightFade ? 1 : 0 } },
+    vertexShader: /* glsl */ `
+      varying vec3 vN; varying vec3 vV; varying float vH;
+      void main() {
+        vH = uv.y;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalMatrix * normal;
+        vV = -mv.xyz;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor; uniform float uOpacity; uniform float uPower; uniform float uFade;
+      varying vec3 vN; varying vec3 vV; varying float vH;
+      void main() {
+        float facing = abs(dot(normalize(vN), normalize(vV)));
+        float ends = mix(1.0, smoothstep(0.0, 0.2, vH) * smoothstep(1.0, 0.75, vH), uFade);
+        float a = pow(facing, uPower) * ends * uOpacity;
+        gl_FragColor = vec4(uColor * a, 1.0);
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
 export class ThermalColumn {
   readonly group = new Group();
   private readonly material: MeshBasicMaterial;
+  private readonly shell: ShaderMaterial;
   private readonly rings: Mesh[] = [];
   private readonly height: number;
 
   constructor(radius: number, height: number, color = 0xffc56e) {
     this.height = height;
     this.material = new MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, fog: false });
-    const shell = new Mesh(new CylinderGeometry(radius * 0.8, radius * 0.55, height, 14, 1, true), this.material);
+    this.shell = softLightMaterial(color, 2.2, true);
+    const shell = new Mesh(new CylinderGeometry(radius * 0.8, radius * 0.55, height, 20, 1, true), this.shell);
     shell.position.y = height / 2;
     this.group.add(shell);
     for (let i = 0; i < 3; i++) {
@@ -158,7 +195,8 @@ export class ThermalColumn {
     this.group.visible = level > 0.01;
     if (!this.group.visible) return;
     this.group.position.set(x, y, z);
-    this.material.opacity = 0.085 * level;
+    this.material.opacity = 0.05 * level;
+    this.shell.uniforms.uOpacity.value = 0.032 * level;
     for (let i = 0; i < this.rings.length; i++) {
       const t = (time * 0.42 + i / this.rings.length) % 1;
       this.rings[i].position.y = t * this.height;
@@ -216,26 +254,52 @@ export class ShockRings {
 
 export class Sunbeam {
   readonly mesh: Mesh;
-  private readonly material: MeshBasicMaterial;
+  private readonly material: ShaderMaterial;
   private level = 0;
   target = 0;
 
   constructor() {
-    this.material = new MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, fog: false });
-    const geo = new CylinderGeometry(0.5, 1.5, 9, 16, 1, true);
+    // a soft shaft: bright along its heart, dissolving at the edges and toward the ground
+    this.material = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      blending: AdditiveBlending,
+      uniforms: { uColor: { value: new Color(0xfff0c0) }, uOpacity: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec3 vN; varying vec3 vV; varying float vH;
+        void main() {
+          vH = uv.y;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalMatrix * normal;
+          vV = -mv.xyz;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor; uniform float uOpacity;
+        varying vec3 vN; varying vec3 vV; varying float vH;
+        void main() {
+          float facing = abs(dot(normalize(vN), normalize(vV)));
+          float a = pow(facing, 3.0) * smoothstep(0.0, 0.2, vH) * (0.35 + 0.65 * vH) * uOpacity;
+          gl_FragColor = vec4(uColor * a, 1.0);
+          #include <colorspace_fragment>
+        }`,
+    });
+    const geo = new CylinderGeometry(0.7, 1.5, 9, 24, 1, true);
     geo.translate(0, 4.5, 0);
     this.mesh = new Mesh(geo, this.material);
     this.mesh.rotation.z = 0.28;
     this.mesh.renderOrder = 17;
     this.mesh.visible = false;
+    this.mesh.frustumCulled = false;
   }
 
   update(x: number, y: number, z: number, dt: number, color: Color): void {
     this.level += (this.target - this.level) * (1 - Math.exp(-1.2 * dt));
     this.mesh.visible = this.level > 0.01;
     this.mesh.position.set(x, y - 0.4, z);
-    this.material.color.copy(color);
-    this.material.opacity = 0.2 * this.level;
+    (this.material.uniforms.uColor.value as Color).copy(color);
+    this.material.uniforms.uOpacity.value = 0.085 * this.level;
   }
 }
 

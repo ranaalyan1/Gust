@@ -102,7 +102,7 @@ export const DEFAULT_GESTURES: GestureParams = {
   updraftMaxStrength: 8,
   updraftHeight: 3.1,
   updraftEntrain: 0.45,
-  updraftMaxLean: 0.8,
+  updraftMaxLean: 0.6,
 
   clapDistance: 0.11,
   clapRearmDistance: 0.2,

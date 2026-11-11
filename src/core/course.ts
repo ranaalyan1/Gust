@@ -255,7 +255,7 @@ export function buildCourse(opts: CourseOptions): Course {
           origin: vec3(cx + half + 0.9, 1.0, 0.1),
           direction: vec3(-1, 0, 0),
           strength: 0,
-          radius: 4.4,
+          radius: 6.2,
           weather: true,
           piercing: true,
           tag: 'weather:pulse',
