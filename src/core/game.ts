@@ -69,6 +69,8 @@ export interface GameOptions {
   garden?: Garden;
   /** Seeds island shapes and ambient timing. */
   seed?: number;
+  /** Begin at this stage (0..3) instead of the first. For demos and tests. */
+  startStage?: number;
 }
 
 /** Sky colour weights; they always sum to 1. */
@@ -143,8 +145,8 @@ export class Game {
   private readonly rng: Rng;
   private readonly worldSeed: number;
   private islandId = 1;
-  private readonly assistWind: StreamSource;
-  private readonly reliefThermal: ThermalSource;
+  readonly assistWind: StreamSource;
+  readonly reliefThermal: ThermalSource;
   private readonly guardian: StreamSource;
   private steadyBase: number[] = [];
   private pulseWarned: boolean[] = [];
@@ -175,13 +177,14 @@ export class Game {
     this.guardian = createStream({ strength: 0, radius: 3.2, enabled: false, weather: true, piercing: true, tag: 'weather:guardian' });
 
     const home = createHomeIsland(this.islandId++, 0);
+    const s0 = Math.max(0, Math.min(STAGE_COUNT - 1, Math.round(options.startStage ?? 0))) || 0;
     const first = buildCourse({
-      stage: 0,
-      mission: fallbackMission(0, this.run),
+      stage: s0,
+      mission: fallbackMission(s0, this.run),
       start: home,
       goalId: this.islandId++,
       flockSize: this.flockSize,
-      seed: this.courseSeed(0),
+      seed: this.courseSeed(s0),
     });
     this.installCourse(first);
     this.focus.x = first.dandelion.x;
@@ -431,6 +434,7 @@ export class Game {
     const seeds = this.seeds;
     const env = this.env;
     env.terrain = c.terrain;
+    env.ceiling = c.ceiling;
     let best = 0;
     let lead: Seed | null = null;
     let leadScore = -Infinity;

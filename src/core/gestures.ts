@@ -51,6 +51,8 @@ export interface GestureParams {
   updraftHeight: number;
   /** Inward draw of the column: a seed over cupped hands is pulled to their centre and follows them. */
   updraftEntrain: number;
+  /** Most the jet can be tipped by leaning the palms (tangent of the angle). */
+  updraftMaxLean: number;
 
   // ── clap ──
   /** Palms closer than this have met (hand m). */
@@ -95,11 +97,12 @@ export const DEFAULT_GESTURES: GestureParams = {
   updraftMaxHeightDiff: 0.3,
   updraftAttack: 0.35,
   updraftRelease: 1.1,
-  updraftStrength: 3.6,
+  updraftStrength: 4.7,
   updraftRaiseGain: 0.45,
   updraftMaxStrength: 8,
-  updraftHeight: 4.5,
+  updraftHeight: 3.1,
   updraftEntrain: 0.45,
+  updraftMaxLean: 0.8,
 
   clapDistance: 0.11,
   clapRearmDistance: 0.2,
@@ -377,6 +380,13 @@ export class HandWind {
           up.base.z += (tz - up.base.z) * k;
         }
         up.radius = clamp(sep * 0.5 + 0.7, 0.8, 1.7);
+        // tipped palms tip the jet: lean your cupped hands the way the seed should go
+        const ny = Math.max(0.35, (left.palmNormal.y + right.palmNormal.y) * 0.5);
+        const kl = damp(10, dt);
+        const lx = clamp(((left.palmNormal.x + right.palmNormal.x) * 0.5) / ny, -p.updraftMaxLean, p.updraftMaxLean);
+        const lz = clamp(((left.palmNormal.z + right.palmNormal.z) * 0.5) / ny, -p.updraftMaxLean, p.updraftMaxLean);
+        up.leanX = (up.leanX ?? 0) + (lx - (up.leanX ?? 0)) * kl;
+        up.leanZ = (up.leanZ ?? 0) + (lz - (up.leanZ ?? 0)) * kl;
         const raise = Math.max(0, (left.velocity.y + right.velocity.y) * 0.5);
         const target = clamp(p.updraftStrength + p.updraftRaiseGain * raise, 0, p.updraftMaxStrength);
         this.updraftTarget += (target - this.updraftTarget) * damp(8, dt);
@@ -386,6 +396,7 @@ export class HandWind {
     {
       const up = this.updraft;
       up.height = p.updraftHeight;
+      up.taper = 1; // a jet: the seed hovers above the palms instead of climbing forever
       up.entrain = p.updraftEntrain;
       // ease-in so the column swells rather than snaps
       const level = this.updraftLevel * this.updraftLevel * (3 - 2 * this.updraftLevel);

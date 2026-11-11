@@ -138,6 +138,11 @@ export interface SeedEnvironment {
   /** 0..1 rain intensity at the seed. */
   rain: number;
   terrain: Terrain | null;
+  /**
+   * Height where the air thins (m). Above it lift fades and the seed is eased
+   * back down, so no updraft, however eagerly held, can carry it out of the world.
+   */
+  ceiling?: number;
 }
 
 export const STILL_AIR: SeedEnvironment = { rain: 0, terrain: null };
@@ -271,6 +276,12 @@ export function stepSeed(
   let ax = params.drag * rel.x;
   let ay = params.drag * rel.y - params.gravity - env.rain * params.rainAccel;
   let az = params.drag * rel.z;
+
+  // thin air: a soft ceiling. Lift dies away above it and the climb is damped.
+  if (env.ceiling !== undefined && pos.y > env.ceiling) {
+    const over = pos.y - env.ceiling;
+    ay -= 7 * over + (vel.y > 0 ? 3.5 * vel.y * Math.min(1, over * 2) : 0);
+  }
 
   // flutter: a zero-mean lateral swing, perpendicular to the airflow
   if (relSpeed > 1e-4 && params.flutter > 0) {

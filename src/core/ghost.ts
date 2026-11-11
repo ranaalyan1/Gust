@@ -22,6 +22,9 @@ import type { Game } from './game.js';
 import type { Seed } from './seed.js';
 import { islandTop } from './terrain.js';
 
+/** How high a seed rides above cupped palms (m): where the jet's lift equals its fall. */
+const HOVER = 1.3;
+
 /** Fastest the ghost moves a hand (simulation m/s). */
 const MAX_HAND_SPEED = 10;
 
@@ -81,7 +84,6 @@ export class GhostPlayer {
   private readonly l = new GhostHand();
   private readonly r = new GhostHand();
   private sweepClock = 0;
-  private lifting = true;
 
   get left(): HandSample {
     return this.l.sample;
@@ -179,10 +181,9 @@ export class GhostPlayer {
     }
     if (overGoal) altitude = goalTop - 1; // let it settle onto the soil
 
-    // ── altitude: palms up to lift, palms down to let it sink ──
-    if (p.y < altitude - 0.12) this.lifting = true;
-    else if (p.y > altitude + 0.22) this.lifting = false;
-    const lift = this.lifting && !overGoal;
+    // ── altitude: the seed hovers a fixed height above cupped palms, so the
+    // hands simply go to where that puts it; raise them to climb, lower to sink ──
+    const lift = !overGoal;
 
     // ── carry: a seed is drawn to the centre of the column, so lead it ──
     // Cupped hands go slightly AHEAD of where the seed is, toward where it
@@ -194,7 +195,8 @@ export class GhostPlayer {
     leadX *= 1 - 0.8 * low;
     const leadZ = clamp(-p.z * 0.8 - seed.vel.z * 0.25, -0.5, 0.5);
     const hx = p.x + leadX;
-    const hy = p.y - 0.62;
+    // never further below the seed than the cushion reaches, never above it
+    const hy = clamp(altitude - HOVER, p.y - 1.9, p.y - 0.45);
     const hz = p.z + leadZ;
     const spread = 0.34;
 
@@ -208,8 +210,10 @@ export class GhostPlayer {
       this.r.aim(hx, hy, hz + spread);
       this.l.aim(hx, hy, hz - spread);
       if (lift) {
-        this.l.face(leadX * 0.5, 1, leadZ * 0.5);
-        this.r.face(leadX * 0.5, 1, leadZ * 0.5);
+        // tip the palms the way it should go: the jet leans with them
+        const tipX = wantX === 0 ? clamp((holdX - p.x) * 0.8, -0.5, 0.5) : wantX * 0.55 * (1 - 0.7 * low);
+        this.l.face(tipX, 1, leadZ * 0.6);
+        this.r.face(tipX, 1, leadZ * 0.6);
       } else {
         this.l.face(0, -1, 0);
         this.r.face(0, -1, 0);

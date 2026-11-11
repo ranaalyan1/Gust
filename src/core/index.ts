@@ -18,3 +18,4 @@ export * from './weatherMind.js';
 export * from './garden.js';
 export * from './game.js';
 export * from './ghost.js';
+export * from './pointerHands.js';

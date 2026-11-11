@@ -69,6 +69,8 @@ export interface Course {
   /** Radius of the dandelion head (m). */
   headRadius: number;
   seedCount: number;
+  /** Height where the air thins: the soft roof of the flight (m). */
+  ceiling: number;
   /** x of the launch point and of the goal, for progress. */
   startX: number;
   goalX: number;
@@ -367,6 +369,7 @@ export function buildCourse(opts: CourseOptions): Course {
     dandelion,
     headRadius,
     seedCount,
+    ceiling: Math.max(dandelion.y, goal.center.y) + 3.4,
     startX: dandelion.x,
     goalX: x1 - goal.rx * 0.55,
     ambient,

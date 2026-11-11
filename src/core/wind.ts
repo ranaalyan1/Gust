@@ -72,6 +72,20 @@ export interface ThermalSource extends SourceBase {
   strength: number;
   /** Gentle inward draw at the foot, as a fraction of strength. */
   entrain: number;
+  /**
+   * 0 = a column that holds its speed nearly to the top (a weather thermal).
+   * 1 = a jet that weakens steadily with height, like breath from cupped hands:
+   *     whatever rides it finds a height where lift equals its fall and HOVERS
+   *     there, so raising the hands raises the seed. Default 0.
+   */
+  taper?: number;
+  /**
+   * Tilt of the column, as horizontal air speed per unit of vertical speed
+   * (the tangent of the lean). Cupped palms tipped forward blow forward: this
+   * is how a carried seed is steered. Default 0 (straight up).
+   */
+  leanX?: number;
+  leanZ?: number;
 }
 
 /** A ring of outward air that expands at `speed` and fades with age. */
@@ -235,9 +249,14 @@ function addThermal(s: ThermalSource, p: Vec3, out: Vec3, gain: number): void {
   if (h <= -0.2 || h >= s.height) return;
   const n = 1 - rho2 / (R * R);
   const radial = n * n;
-  const vertical = smoothstep(-0.2, 0.3, h) * (1 - smoothstep(0.7 * s.height, s.height, h));
+  const column = 1 - smoothstep(0.7 * s.height, s.height, h);
+  const taper = s.taper ?? 0;
+  const profile = taper > 0 ? column + (Math.max(0, 1 - Math.max(0, h) / s.height) - column) * taper : column;
+  const vertical = smoothstep(-0.2, 0.3, h) * profile;
   const w = s.strength * radial * vertical * gain;
   out.y += w;
+  if (s.leanX !== undefined) out.x += w * s.leanX;
+  if (s.leanZ !== undefined) out.z += w * s.leanZ;
   if (s.entrain !== 0 && rho2 > 1e-10) {
     // air is drawn in toward the foot of the column
     const rho = Math.sqrt(rho2);

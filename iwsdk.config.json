@@ -50,7 +50,8 @@
   },
   "dev": {
     "emulator": {
-      "device": "metaQuest3"
+      "device": "metaQuest3",
+      "activation": "always"
     }
   }
 }
