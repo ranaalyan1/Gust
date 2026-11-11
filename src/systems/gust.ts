@@ -319,10 +319,10 @@ export class GustSystem extends createSystem({}) {
 
   // ── input -> raw palm poses in simulation space ────────────────────────────
 
-  private readInput(presenting: boolean, dt: number): void {
+  private readInput(presenting: boolean): void {
     this.rawActive[0] = this.rawActive[1] = false;
     if (presenting) {
-      this.xrHands.update(this.renderer.xr.getFrame() as XRFrame | null, this.renderer.xr.getReferenceSpace(), dt);
+      this.xrHands.update(this.renderer.xr.getFrame() as XRFrame | null, this.renderer.xr.getReferenceSpace());
       const palms = [this.xrHands.left, this.xrHands.right];
       for (let i = 0; i < 2; i++) {
         const p = palms[i];
@@ -750,7 +750,7 @@ export class GustSystem extends createSystem({}) {
     this.wasPresenting = presenting;
 
     this.place(dt, presenting);
-    this.readInput(presenting, dt);
+    this.readInput(presenting);
     // ?speed=N fast-forwards the simulation (for testing and time-lapses)
     this.subIndex = 0;
     this.subCount = Math.max(1, this.stepper.pending(dt) * this.speed);

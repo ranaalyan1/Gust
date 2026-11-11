@@ -47,17 +47,22 @@ export class PointerInput {
 
   private readonly move = (e: PointerEvent): void => {
     this.touch = e.pointerType === 'touch';
+    // touch: the hand is the FIRST finger; a second finger only cups, it never moves the hand
+    if (this.touch && !e.isPrimary) return;
     this.place(e);
   };
 
   private readonly down = (e: PointerEvent): void => {
     this.touch = e.pointerType === 'touch';
     this.gesture();
+    if (this.touch && !e.isPrimary) {
+      // touch: one finger is an open hand; a second finger cups both
+      this.held = true;
+      return;
+    }
     this.place(e);
     if (e.button === 2) this.clap = true;
-    else if (!this.touch || !e.isPrimary) this.held = true;
-    // touch: one finger is an open hand; a second finger cups both
-    if (this.touch && !e.isPrimary) this.held = true;
+    else if (!this.touch) this.held = true;
   };
 
   private readonly up = (e: PointerEvent): void => {

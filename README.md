@@ -22,6 +22,10 @@ browser with a mouse or a finger.
 | Clap | clap | right-click or Space | a shockwave |
 | Stir | circle a hand | draw circles | a whirlwind that gathers seeds |
 
+To land the seed, take the jet away: open your hands wide apart (more than
+about 75 cm) or turn the palms over; on desktop, let go of the button. Controllers held level count as palms up, so with controllers you let
+go by spreading or rolling them.
+
 There is no menu and no tutorial text in the headset: if you hesitate, a pair of
 golden ghost hands shows the next move. On desktop a single line of hint text
 appears instead.

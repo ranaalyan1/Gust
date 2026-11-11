@@ -235,8 +235,8 @@ export function stepSeed(
     seed.airflow.z = wind.z;
     const over = playerSpeed - params.pluckThreshold;
     // one decent sweep is enough: magic must happen on the very first gesture
-    if (over > 0) seed.pluck += over * 10 * dt;
-    else seed.pluck -= 0.5 * dt;
+    if (over > 0) seed.pluck += over * 14 * dt;
+    else seed.pluck -= 0.25 * dt; // slow to forget: two half-hearted passes add up
     seed.pluck = clamp01(seed.pluck);
     // strain against the stem: lean and tremble with the wind
     seed.phase += 6.283 * (params.flutterHz * 2 + playerSpeed * 0.5) * dt;
