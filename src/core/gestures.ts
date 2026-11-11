@@ -49,6 +49,8 @@ export interface GestureParams {
   updraftRaiseGain: number;
   updraftMaxStrength: number;
   updraftHeight: number;
+  /** Inward draw of the column: a seed over cupped hands is pulled to their centre and follows them. */
+  updraftEntrain: number;
 
   // ── clap ──
   /** Palms closer than this have met (hand m). */
@@ -97,6 +99,7 @@ export const DEFAULT_GESTURES: GestureParams = {
   updraftRaiseGain: 0.45,
   updraftMaxStrength: 8,
   updraftHeight: 4.5,
+  updraftEntrain: 0.45,
 
   clapDistance: 0.11,
   clapRearmDistance: 0.2,
@@ -383,6 +386,7 @@ export class HandWind {
     {
       const up = this.updraft;
       up.height = p.updraftHeight;
+      up.entrain = p.updraftEntrain;
       // ease-in so the column swells rather than snaps
       const level = this.updraftLevel * this.updraftLevel * (3 - 2 * this.updraftLevel);
       up.strength = this.updraftTarget * level;

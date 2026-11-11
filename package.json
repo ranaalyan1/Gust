@@ -10,7 +10,9 @@
     "dev:status": "iwsdk dev status",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@iwsdk/core": "1.1.0-rc.2",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@iwsdk/cli": "1.1.0-rc.2",
     "@iwsdk/vite-plugin-dev": "1.1.0-rc.2",
+    "@types/node": "^26.6.6",
     "@types/three": "^0.185.0",
     "typescript": "^5.5.0",
     "vite": "^7.1.4",

@@ -49,7 +49,7 @@ export const DEFAULT_SEED_PARAMS: SeedParams = {
   flutterHz: 1.15,
   axisSpring: 58,
   axisDamping: 4.6,
-  rainAccel: 3.2,
+  rainAccel: 1.5,
   radius: 0.07,
   restitution: 0.12,
   friction: 7,
@@ -229,8 +229,9 @@ export function stepSeed(
     seed.airflow.y = wind.y;
     seed.airflow.z = wind.z;
     const over = playerSpeed - params.pluckThreshold;
-    if (over > 0) seed.pluck += over * 2.4 * dt;
-    else seed.pluck -= 0.8 * dt;
+    // one decent sweep is enough: magic must happen on the very first gesture
+    if (over > 0) seed.pluck += over * 7 * dt;
+    else seed.pluck -= 0.5 * dt;
     seed.pluck = clamp01(seed.pluck);
     // strain against the stem: lean and tremble with the wind
     seed.phase += 6.283 * (params.flutterHz * 2 + playerSpeed * 0.5) * dt;
