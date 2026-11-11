@@ -196,7 +196,7 @@ export class ThermalColumn {
     if (!this.group.visible) return;
     this.group.position.set(x, y, z);
     this.material.opacity = 0.05 * level;
-    this.shell.uniforms.uOpacity.value = 0.032 * level;
+    this.shell.uniforms.uOpacity.value = 0.018 * level;
     for (let i = 0; i < this.rings.length; i++) {
       const t = (time * 0.42 + i / this.rings.length) % 1;
       this.rings[i].position.y = t * this.height;
@@ -299,7 +299,7 @@ export class Sunbeam {
     this.mesh.visible = this.level > 0.01;
     this.mesh.position.set(x, y - 0.4, z);
     (this.material.uniforms.uColor.value as Color).copy(color);
-    this.material.uniforms.uOpacity.value = 0.085 * this.level;
+    this.material.uniforms.uOpacity.value = 0.065 * this.level;
   }
 }
 

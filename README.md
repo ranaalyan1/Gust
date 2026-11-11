@@ -1,45 +1,117 @@
-# IWSDK App
+# GUST
 
-This project uses `iwsdk.config.json` for declarative scene, asset, component,
-XR, and emulator configuration. Application systems remain explicit in
-`src/index.ts`.
+Your hands are the wind. Carry a dandelion seed across a living sky.
 
-```sh
+GUST is a small WebXR game built on the Immersive Web SDK. A miniature world of
+floating islands sits in front of you; a single glowing seed waits on a
+dandelion. Sweep a hand past it and it lifts. Cup your hands beneath it and it
+rides the air above your palms. Get it to the barren island and the island
+blooms. Four short acts, about three to five minutes a run, and every run
+plants something permanent in your home garden.
+
+It plays in a headset with hand tracking or controllers, and in any ordinary
+browser with a mouse or a finger.
+
+## Playing
+
+| You do | Headset | Mouse / touch | The air does |
+| --- | --- | --- | --- |
+| Open palm | hold a hand still | rest the pointer | a gentle stream from the palm |
+| Sweep | swing a hand | flick the pointer | a gust along the motion |
+| Cup both hands | two palms up, together | hold the button / finger | a jet the seed hovers on; lean it to steer |
+| Clap | clap | right-click or Space | a shockwave |
+| Stir | circle a hand | draw circles | a whirlwind that gathers seeds |
+
+There is no menu and no tutorial text in the headset: if you hesitate, a pair of
+golden ghost hands shows the next move. On desktop a single line of hint text
+appears instead.
+
+The four acts: **First Breath** (dawn, one seed, one gap), **The Storm Gate**
+(rain, and a stone gate that exhales on a rhythm), **The Long Crossing** (the
+storm breaks as you advance and thermals light up like stepping stones) and
+**Dandelion Burst** (golden hour, a whole flock; bring 40% home).
+
+### URL flags
+
+`?ghost=1` lets the scripted ghost play (a good first look). `?stage=0..3`
+starts at an act. `?mute=1` silences audio. `?offline=1` never calls the
+mission API. `?reset=1` clears the saved garden. `?quality=0.5` is a lighter
+mode. `?flock=N`, `?seed=N` and `?speed=N` are for testing.
+
+## The Weather Mind
+
+Two layers decide what the sky does.
+
+1. **A realtime director** (`src/core/weatherMind.ts`) runs every physics step
+   in the browser. It watches progress, stalls and losses, and leans on the
+   weather: a struggling player gets a tailwind and a relief thermal, a player
+   who is cruising gets a little more menace.
+2. **A mission writer** (`api/mission.ts`, `src/server/weatherMind.ts`). Between
+   acts the client posts how the last act went to `/api/mission`. If
+   `GEMINI_API_KEY` is set, Gemini answers with a structured mission (sky mood,
+   wind, turbulence, hazards, cues such as birds, lightning and sunbeams). The
+   answer is validated and clamped before the game will use it. With no key, a
+   slow answer or a bad answer, a hand-written mission bank is used and the game
+   carries on; the endpoint always returns `200` with a valid mission and says
+   which source it came from.
+
+The key is read only on the server. It has no `VITE_` prefix and is never in
+the client bundle.
+
+## Running it
+
+Requires Node 22.12 or newer.
+
+```bash
 npm install
-npm run dev
+npx vite            # https://localhost:8081 (self-signed, which WebXR needs)
 ```
 
-Use the Runtime and Editor controls in the managed browser to switch between
-the running experience and its authored scene.
+`GUST_HTTP=1 npx vite` serves plain HTTP instead, for hosted previews that
+terminate TLS themselves. The dev server also serves `/api/mission`; copy
+`.env.example` to `.env.local` and add a key to hear from Gemini locally.
 
-## Starter content
+In development the IWSDK emulator is injected, so the **Enter XR** button works
+on a desktop browser with an emulated Quest 3.
 
-The robot and welcome panel are small examples of authored scene content plus
-runtime systems. The robot turns toward the player's head and plays a sound
-when pressed. To remove the robot, delete its scene node, its `RobotSystem`
-registration from `src/index.ts` or `src/index.js`, and its `Robot` registration
-from `src/components.ts` or `src/components.js`; you can then delete the unused
-robot component and system files. To remove the welcome panel, delete its scene
-node and its `PanelSystem` registration from the application entry point.
+```bash
+npm test            # 124 unit tests of the headless game core
+npm run ghost       # the scripted ghost plays a whole run in the terminal
+npm run typecheck
+npm run build       # production build in dist/
+```
 
-The robot stands on the second of three numbered stations. The first holds dark
-pieces you can grab and move, and the third holds a ring you can spin in place.
-The studio props (the plinths and the dark pieces, plus the floor and stage in VR
-and Desktop 3D) are built in code in `src/scene-assets/studio.scene-asset.ts` or
-`.js`. The VR and Desktop 3D background furniture is built the same way in
-`src/scene-assets/decor.scene-asset.ts` or `.js`, so the starter downloads no
-extra models. To remove any of them, delete their scene nodes and their entries
-in `src/assets.ts` or `src/assets.js`, then delete the files you no longer use.
-The station labels are `public/ui/label-*.uikitml`.
+## Deploying to Vercel
 
-The rest of the look is built-in components in the scene, which you can edit in
-the editor without code. The soft light on every object is the scene root's
-`IBLGradient` (select the Level Root to edit it), and the soft shadows under
-each object are `ContactShadow` nodes. In VR and Desktop 3D, the sky is the
-scene root's `DomeGradient` (its colors, tilt and dither are also on the Level
-Root), and the floor fades into it through the `DomeFade` on the floor node. AR
-projects have no sky or floor, so passthrough stays visible, and a
-`ShadowCatcher` node grounds the stations.
+`vercel.json` is set up: Vite builds to `dist/` and `api/mission.ts` becomes a
+serverless function.
 
-- Minimal scene walkthrough: https://iwsdk.dev/guides/01b-minimal-scene.html
-- XR-enabled projects — IWER emulator controls: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
+1. Import the repository in Vercel, or run `npx vercel deploy --prod`.
+2. Optional: add `GEMINI_API_KEY` under Project Settings, Environment Variables.
+3. Open `https://<project>.vercel.app/api/mission?stage=1`. `"source":"gemini"`
+   means the model answered; `"source":"fallback"` comes with a `reason`.
+
+## How it is put together
+
+```
+src/core/      the whole game, headless and deterministic: wind field, seed
+               flight, hand verbs, courses, missions, director, garden, ghost
+src/render/    low-poly world drawn from that state (sky, islands, foliage,
+               seeds, air, light)
+src/input/     mouse/touch and WebXR hands or controllers, both reduced to the
+               same thing: two palm poses
+src/audio/     fully synthesised sound, no audio files
+src/systems/   the one IWSDK system that wires it together
+src/server/    mission resolver shared by the Vercel function and the dev server
+api/           the Vercel function
+tests/         unit tests for the core and the resolver
+scripts/       headless ghost play-through
+```
+
+Everything the player touches is one physical model. A hand, a mouse, a
+controller and the ghost all produce palm poses; palm poses become wind
+sources; the seed is a point mass with drag in that wind. There are no
+scripted trajectories.
+
+The world is drawn at 1:7 and placed within arm's reach. There are no texture
+or model files: every island, plant and sound is generated at load.

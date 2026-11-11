@@ -90,6 +90,9 @@ const RESPAWN_DELAY = 1.5;
 const PAR = [22, 38, 45, 60];
 /** Fraction of the flock that must come home for the island to bloom. */
 export const FLOCK_NEED = 0.4;
+/** Seeds of a flock closer than this push gently apart (m), with this acceleration at contact (m/s^2). */
+const FLOCK_SPACING = 0.55;
+const FLOCK_PUSH = 14;
 /** Beyond this |z| the sky nudges a lone seed back toward the player's reach. */
 const CORRIDOR = 1.45;
 
@@ -439,6 +442,41 @@ export class Game {
     let lead: Seed | null = null;
     let leadScore = -Infinity;
     const flock = c.seedCount > 1;
+
+    // A flock keeps a little air between its seeds: riding one column they
+    // gather into a loose drifting cloud, never a single bright point.
+    if (flock) {
+      const R = FLOCK_SPACING;
+      for (let i = 0; i < seeds.length; i++) {
+        const a = seeds[i];
+        if (a.status !== 'flying') continue;
+        for (let j = i + 1; j < seeds.length; j++) {
+          const b = seeds[j];
+          if (b.status !== 'flying') continue;
+          let dx = a.pos.x - b.pos.x;
+          let dy = a.pos.y - b.pos.y;
+          let dz = a.pos.z - b.pos.z;
+          if (dx > R || dx < -R || dy > R || dy < -R || dz > R || dz < -R) continue;
+          let d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 >= R * R) continue;
+          if (d2 < 1e-8) {
+            // exactly coincident: part them along a direction of their own
+            dx = a.variation - 0.5;
+            dy = 0.1;
+            dz = b.variation - 0.5;
+            d2 = dx * dx + dy * dy + dz * dz + 1e-8;
+          }
+          const d = Math.sqrt(d2);
+          const push = ((1 - d / R) * FLOCK_PUSH * dt) / d;
+          a.vel.x += dx * push;
+          a.vel.y += dy * push * 0.5;
+          a.vel.z += dz * push;
+          b.vel.x -= dx * push;
+          b.vel.y -= dy * push * 0.5;
+          b.vel.z -= dz * push;
+        }
+      }
+    }
 
     for (let i = seeds.length - 1; i >= 0; i--) {
       const s = seeds[i];

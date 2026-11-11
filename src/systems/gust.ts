@@ -464,6 +464,7 @@ export class GustSystem extends createSystem({}) {
         if (e.first) {
           this.audio.pluck(this.pan(e.seed.pos.x));
           this.everPlucked = true;
+          if (typeof document !== 'undefined') document.body.classList.add('gust-playing'); // the title drifts away
         }
         this.burst(e.seed.pos.x, e.seed.pos.y, e.seed.pos.z, e.first ? 14 : 3, 1.6, WARM, 0.06, 0.9);
         break;

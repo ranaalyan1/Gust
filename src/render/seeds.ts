@@ -184,7 +184,7 @@ export class SeedViews {
         scale *= 1 - t;
         glow *= 1 - t;
       }
-      if (flock && s.status === 'flying') glow *= 0.6;
+      if (flock && s.status === 'flying') glow *= 0.42;
       if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0);
       axis.normalize();
       qa.setFromUnitVectors(up, axis);
