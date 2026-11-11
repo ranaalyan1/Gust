@@ -27,6 +27,13 @@ export class FixedStepper {
     return this.steps * this.dt;
   }
 
+  /** How many steps `advance(frameDelta)` is about to run (to spread per-frame input across them). */
+  pending(frameDelta: number): number {
+    if (!(frameDelta > 0)) return 0;
+    const acc = Math.min(this.accumulator + frameDelta, this.dt * this.maxSteps);
+    return Math.floor((acc + 1e-9) / this.dt);
+  }
+
   /** Feed real elapsed time; `step` is called zero or more times with the fixed dt. */
   advance(frameDelta: number, step: (dt: number) => void): number {
     if (!(frameDelta > 0)) return 0;

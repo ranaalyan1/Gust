@@ -88,6 +88,13 @@ export class GustSystem extends createSystem({}) {
   private readonly rawPos = [vec3(), vec3()];
   private readonly rawNormal = [vec3(0, 1, 0), vec3(0, 1, 0)];
   private readonly rawActive = [false, false];
+  // headset poses arrive once per frame; physics may step several times per frame.
+  // The pose is spread across those steps so a hand moves smoothly, never in jumps.
+  private readonly xrFrom = [vec3(), vec3()];
+  private readonly xrTo = [vec3(), vec3()];
+  private readonly xrKnown = [false, false];
+  private subIndex = 0;
+  private subCount = 1;
   private readonly live: [HandSample | null, HandSample | null] = [null, null];
   private planeZ = 0;
 
@@ -238,13 +245,16 @@ export class GustSystem extends createSystem({}) {
     const span = course.goal.center.x - course.dandelion.x;
     const mid = course.dandelion.x + span * 0.5;
     // headset: the seed stays within arm's reach. desktop: the whole crossing stays in frame.
-    let targetX = game.focus.x;
+    // In the headset the world slides only HALF as far as the seed travels: a seed
+    // drawn toward still hands really does arrive at them (a world that kept pace
+    // with it would be a treadmill), and nothing is ever more than a reach away.
+    let targetX = mid + (game.focus.x - mid) * 0.5;
     if (!presenting) {
       const t = game.phase === 'travel' ? game.travel * game.travel * (3 - 2 * game.travel) : 1;
       const from = game.phase === 'travel' ? game.course.goal.center.x : mid;
       targetX = (from + (mid - from) * t) * 0.72 + game.focus.x * 0.28;
     }
-    const k = 1 - Math.exp(-(presenting ? 6 : 3) * dt);
+    const k = 1 - Math.exp(-(presenting ? 2.5 : 3) * dt);
     this.viewX += (targetX - this.viewX) * k;
     this.viewY += (this.viewHeight() - this.viewY) * k;
 
@@ -257,8 +267,8 @@ export class GustSystem extends createSystem({}) {
       const valid = va.y > 0.25 && vb.lengthSq() > 1e-4;
       if (valid) {
         vb.normalize().negate(); // forward
-        vc.copy(va).addScaledVector(vb, 0.5);
-        vc.y = va.y - 0.38;
+        vc.copy(va).addScaledVector(vb, 0.58);
+        vc.y = va.y - 0.3;
         const off = Math.hypot(vc.x - this.anchor.x, vc.z - this.anchor.z) + Math.abs(vc.y - this.anchor.y) * 1.3;
         if (!this.anchored) {
           this.anchor.copy(vc);
@@ -309,24 +319,36 @@ export class GustSystem extends createSystem({}) {
 
   // ── input -> raw palm poses in simulation space ────────────────────────────
 
-  private readInput(presenting: boolean): void {
+  private readInput(presenting: boolean, dt: number): void {
     this.rawActive[0] = this.rawActive[1] = false;
     if (presenting) {
-      this.xrHands.update(this.renderer.xr.getFrame() as XRFrame | null, this.renderer.xr.getReferenceSpace());
+      this.xrHands.update(this.renderer.xr.getFrame() as XRFrame | null, this.renderer.xr.getReferenceSpace(), dt);
       const palms = [this.xrHands.left, this.xrHands.right];
       for (let i = 0; i < 2; i++) {
         const p = palms[i];
         if (!p.active) continue;
         va.copy(p.position).applyMatrix4(this.player.matrixWorld).applyMatrix4(toSim);
         vb.copy(p.normal).transformDirection(this.player.matrixWorld).transformDirection(toSim);
-        this.rawPos[i].x = va.x;
-        this.rawPos[i].y = va.y;
-        this.rawPos[i].z = va.z;
+        const from = this.xrFrom[i], to = this.xrTo[i];
+        if (this.xrKnown[i]) {
+          from.x = to.x;
+          from.y = to.y;
+          from.z = to.z;
+        } else {
+          from.x = va.x;
+          from.y = va.y;
+          from.z = va.z;
+        }
+        to.x = va.x;
+        to.y = va.y;
+        to.z = va.z;
         this.rawNormal[i].x = vb.x;
         this.rawNormal[i].y = vb.y;
         this.rawNormal[i].z = vb.z;
         this.rawActive[i] = true;
       }
+      this.xrKnown[0] = this.rawActive[0];
+      this.xrKnown[1] = this.rawActive[1];
       this.pointerState.present = false;
       return;
     }
@@ -376,6 +398,17 @@ export class GustSystem extends createSystem({}) {
           this.rawNormal[i].x = raw[i].palmNormal.x;
           this.rawNormal[i].y = raw[i].palmNormal.y;
           this.rawNormal[i].z = raw[i].palmNormal.z;
+        }
+      }
+      else {
+        this.subIndex++;
+        const f = Math.min(1, this.subIndex / this.subCount);
+        for (let i = 0; i < 2; i++) {
+          if (!this.rawActive[i]) continue;
+          const from = this.xrFrom[i], to = this.xrTo[i];
+          this.rawPos[i].x = from.x + (to.x - from.x) * f;
+          this.rawPos[i].y = from.y + (to.y - from.y) * f;
+          this.rawPos[i].z = from.z + (to.z - from.z) * f;
         }
       }
       for (let i = 0; i < 2; i++) {
@@ -716,8 +749,10 @@ export class GustSystem extends createSystem({}) {
     this.wasPresenting = presenting;
 
     this.place(dt, presenting);
-    this.readInput(presenting);
+    this.readInput(presenting, dt);
     // ?speed=N fast-forwards the simulation (for testing and time-lapses)
+    this.subIndex = 0;
+    this.subCount = Math.max(1, this.stepper.pending(dt) * this.speed);
     for (let i = 0; i < this.speed; i++) this.stepper.advance(dt, this.step);
     const alpha = this.stepper.alpha;
     const course = game.course;

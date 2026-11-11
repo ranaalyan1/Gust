@@ -235,7 +235,7 @@ export function stepSeed(
     seed.airflow.z = wind.z;
     const over = playerSpeed - params.pluckThreshold;
     // one decent sweep is enough: magic must happen on the very first gesture
-    if (over > 0) seed.pluck += over * 7 * dt;
+    if (over > 0) seed.pluck += over * 10 * dt;
     else seed.pluck -= 0.5 * dt;
     seed.pluck = clamp01(seed.pluck);
     // strain against the stem: lean and tremble with the wind
