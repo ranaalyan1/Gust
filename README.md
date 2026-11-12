@@ -119,3 +119,11 @@ scripted trajectories.
 
 The world is drawn at 1:7 and placed within arm's reach. There are no texture
 or model files: every island, plant and sound is generated at load.
+
+## Project documents
+
+| Document | What it covers |
+| --- | --- |
+| `docs/COMPETITION_2026.md` | Meta VR Start Developer Competition 2026 rules, deadline, and GUST's position against every requirement |
+| `docs/NATIVE_QUEST_PLAN.md` | The WebXR-to-native port: route comparison, module-by-module mapping, delivery gates |
+| `unity/` | Unity 6 project skeleton for the native port (not yet playable) |

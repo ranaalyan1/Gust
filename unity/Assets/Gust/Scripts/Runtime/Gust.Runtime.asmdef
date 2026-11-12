@@ -1,0 +1,16 @@
+{
+    "name": "Gust.Runtime",
+    "rootNamespace": "Gust.Runtime",
+    "references": [
+        "Gust.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
