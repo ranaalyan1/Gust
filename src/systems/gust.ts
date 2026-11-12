@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, Group, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, createSystem, NoToneMapping, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
+import { Color, Group, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -40,6 +40,7 @@ import { PointerInput } from '../input/pointer.js';
 import { XRHands } from '../input/xrHands.js';
 import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
+import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
 import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloom } from '../render/islands.js';
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
@@ -149,6 +150,7 @@ export class GustSystem extends createSystem({}) {
   private lightningDelay = -1;
   private trailClock = 0;
   private hud: HTMLElement | null = null;
+  private vignette: HTMLElement | null = null;
   private hudState = '';
   private bloomSpeed = 1.5;
   private missionSerial = 0;
@@ -157,7 +159,6 @@ export class GustSystem extends createSystem({}) {
 
   init(): void {
     const renderer = this.renderer;
-    renderer.toneMapping = NoToneMapping;
     renderer.setClearColor(0x101820, 1);
 
     // ── the game ──
@@ -169,6 +170,7 @@ export class GustSystem extends createSystem({}) {
       saved = null; // private mode etc.: the garden simply lives for this visit
     }
     const quality = num('quality', 1);
+    configureRenderer(renderer, { quality });
     this.game = new Game({
       gestures: { ...DEFAULT_GESTURES, unitScale: UNIT },
       garden: parseGarden(saved),
@@ -217,6 +219,11 @@ export class GustSystem extends createSystem({}) {
     );
     for (const p of [...this.palms, ...this.hintPalms]) this.root.add(p.group);
 
+    // Light the diorama like an object on a table: one sun with a real shadow,
+    // a rim on every silhouette, filmic exposure. See src/render/look.ts.
+    configureSunShadows(this.sky.sun);
+    dressScene(this.root);
+
     // ── input ──
     this.pointer = new PointerInput(renderer.domElement);
     this.pointer.onFirstGesture = () => this.audio.start();
@@ -228,6 +235,12 @@ export class GustSystem extends createSystem({}) {
     this.viewX = (this.game.course.dandelion.x + this.game.course.goal.center.x) * 0.5;
     this.viewY = this.viewHeight();
     this.drain();
+
+    // Starting mid-course (or returning after a pause) must never leave the
+    // title card floating over live play: it is an intro, not a watermark.
+    if (this.game.stage > 0 && typeof document !== 'undefined') {
+      document.body.classList.add('gust-playing');
+    }
 
     (window as unknown as { __gust: unknown }).__gust = { game: this.game, system: this };
   }
@@ -716,9 +729,20 @@ export class GustSystem extends createSystem({}) {
     document.body.appendChild(el);
     this.hud = el;
     this.cleanupFuncs.push(() => el.remove());
+
+    // A lens vignette for the flat screen only. In a headset there is no lens
+    // border to imitate, so it is switched off the moment a session starts.
+    const vig = document.createElement('div');
+    vig.style.cssText =
+      'position:fixed;inset:0;pointer-events:none;z-index:4;opacity:1;transition:opacity .5s ease;' +
+      'background:radial-gradient(ellipse 78% 78% at 50% 46%, rgba(6,8,18,0) 55%, rgba(6,8,18,.34) 100%);';
+    document.body.appendChild(vig);
+    this.vignette = vig;
+    this.cleanupFuncs.push(() => vig.remove());
   }
 
   private updateHud(presenting: boolean): void {
+    if (this.vignette) this.vignette.style.opacity = presenting ? '0' : '1';
     if (!this.hud) return;
     const game = this.game;
     let text = '';
@@ -776,7 +800,7 @@ export class GustSystem extends createSystem({}) {
       this.lightningDelay -= dt;
       if (this.lightningDelay < 0 && game.sky.storm > 0.4) this.strike(0.9);
     }
-    this.clouds.update(this.viewX, time, 0, this.sky.cloud, this.sky.cloudShade);
+    this.clouds.update(this.viewX, time, 0, this.sky.cloud, this.sky.cloudShade, this.sky.fog);
     const rainLevel = Math.max(0, Math.min(1, game.rain * (1 + this.rainBias)));
     const shelters = course.shelters;
     this.rain.update(dt, rainLevel, this.viewX, this.viewY, field.ambient.x * 1.5 - 1.2 * game.sky.storm, field.ambient.z * 1.5, (x, y, z) => {

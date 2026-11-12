@@ -13,12 +13,13 @@ import {
   DynamicDrawUsage,
   BufferAttribute,
   Group,
+  Fog,
   IcosahedronGeometry,
-  InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  Points,
   Quaternion,
   RingGeometry,
   TorusGeometry,
@@ -87,50 +88,137 @@ export class PalmMarker {
 
 // ── the sea of clouds ───────────────────────────────────────────────────────
 
+/**
+ * THE SEA OF CLOUDS
+ *
+ * Air below the diorama. It used to be solid icosahedra, which read as rock —
+ * a floating island over white rocks looks like a bad render, not a sky. This
+ * is a point-sprite mist instead: soft round gradients, no edges, lit from the
+ * palette and dissolved into the fog by distance.
+ *
+ * One draw call, no textures on disk: the puff shape is computed in the shader.
+ * (Reference: the haze layers in Tetris Effect and Moss — depth you feel more
+ * than see.)
+ */
 export class CloudSea {
-  readonly mesh: InstancedMesh;
+  readonly mesh: Points;
   private readonly n: number;
-  private readonly seeds: Float32Array;
-  private readonly material: MeshLambertMaterial;
   private readonly span = 26;
+  private readonly positions: Float32Array;
+  private readonly sizes: Float32Array;
+  private readonly alphas: Float32Array;
+  private readonly seeds: Float32Array;
+  private readonly material: ShaderMaterial;
 
-  constructor(count = 46) {
+  constructor(count = 74) {
     this.n = count;
     this.seeds = new Float32Array(count * 4);
+    this.positions = new Float32Array(count * 3);
+    this.sizes = new Float32Array(count);
+    this.alphas = new Float32Array(count);
+
     for (let i = 0; i < count; i++) {
       this.seeds[i * 4] = hash01(i * 7 + 1) * this.span;
       this.seeds[i * 4 + 1] = hash01(i * 7 + 2);
       this.seeds[i * 4 + 2] = hash01(i * 7 + 3);
       this.seeds[i * 4 + 3] = hash01(i * 7 + 4);
+      this.sizes[i] = 1.6 + this.seeds[i * 4 + 3] * 2.4;
+      this.alphas[i] = 0.30 + this.seeds[i * 4 + 2] * 0.34;
     }
-    this.material = new MeshLambertMaterial({ color: 0xffffff, flatShading: true, emissive: 0x000000 });
-    this.mesh = new InstancedMesh(new IcosahedronGeometry(1, 1), this.material, count);
+
+    const geometry = new BufferGeometry();
+    const pos = new BufferAttribute(this.positions, 3);
+    pos.setUsage(DynamicDrawUsage);
+    geometry.setAttribute('position', pos);
+    geometry.setAttribute('aSize', new BufferAttribute(this.sizes, 1));
+    geometry.setAttribute('aAlpha', new BufferAttribute(this.alphas, 1));
+
+    this.material = new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uColor: { value: new Color(1, 1, 1) },
+        uShade: { value: new Color(0.8, 0.8, 0.9) },
+        uFogColor: { value: new Color(1, 1, 1) },
+        uFogNear: { value: 2 },
+        uFogFar: { value: 9 },
+      },
+      vertexShader: /* glsl */ `
+        attribute float aSize;
+        attribute float aAlpha;
+        uniform float uFogNear;
+        uniform float uFogFar;
+        varying float vAlpha;
+        varying float vFog;
+        varying vec2 vSeed;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+          float depth = max(0.001, -mv.z);
+          gl_PointSize = aSize * (420.0 / depth);
+          vAlpha = aAlpha * smoothstep(9.0, 2.0, depth); // fade the ones in your face
+          vFog = smoothstep(uFogNear, uFogFar, depth);
+          vSeed = position.xz;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        uniform vec3 uShade;
+        uniform vec3 uFogColor;
+        varying float vAlpha;
+        varying float vFog;
+        varying vec2 vSeed;
+        void main() {
+          vec2 p = gl_PointCoord * 2.0 - 1.0;
+          float r = length(p);
+          // three overlapping lobes give the puff an irregular, cloudy edge
+          float lobe = 0.82
+            + 0.10 * sin(vSeed.x * 2.7 + r * 5.0)
+            + 0.08 * sin(vSeed.y * 3.3 - r * 4.0);
+          float core = smoothstep(1.0, 0.1, r / lobe);
+          float alpha = pow(core, 1.7) * vAlpha;
+          if (alpha < 0.004) discard;
+          // top of the puff catches the light, the underside takes the shade
+          vec3 col = mix(uShade, uColor, smoothstep(1.0, -0.6, p.y));
+          col = mix(col, uFogColor, vFog * 0.85);
+          gl_FragColor = vec4(col, alpha);
+          #include <colorspace_fragment>
+        }`,
+    });
+
+    this.mesh = new Points(geometry, this.material);
     this.mesh.frustumCulled = false;
-    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    this.mesh.renderOrder = -5;
+    this.mesh.userData.noShadowReceive = true;
   }
 
   /** Clouds wrap around the view centre so the sea is endless; they drift with the prevailing wind. */
-  update(cx: number, time: number, drift: number, color: Color, shadeColor: Color): void {
-    this.material.color.copy(color);
-    this.material.emissive.copy(shadeColor).multiplyScalar(0.35);
+  update(cx: number, time: number, drift: number, color: Color, shadeColor: Color, fog?: Fog): void {
+    const u = this.material.uniforms;
+    (u.uColor.value as Color).copy(color);
+    (u.uShade.value as Color).copy(shadeColor);
+    if (fog) {
+      (u.uFogColor.value as Color).copy(fog.color);
+      u.uFogNear.value = fog.near;
+      u.uFogFar.value = fog.far;
+    }
+
     const half = this.span / 2;
+    const pos = this.positions;
     for (let i = 0; i < this.n; i++) {
       const j = i * 4;
-      let x = this.seeds[j] + time * (0.12 + this.seeds[j + 3] * 0.14) + drift;
+      let x = this.seeds[j] + time * (0.14 + this.seeds[j + 3] * 0.16) + drift;
       x = ((((x - cx + half) % this.span) + this.span) % this.span) - half + cx;
       const depth = this.seeds[j + 1];
-      const z = -7.5 + depth * 11.5;
-      const y = -4.6 - this.seeds[j + 2] * 1.6 - Math.abs(z) * 0.06;
-      const sz = 1.1 + this.seeds[j + 3] * 1.7;
-      s3.set(sz * 1.9, sz * 0.62, sz * 1.3);
-      q.setFromAxisAngle(up, this.seeds[j + 2] * 6.283);
-      m4.compose(v.set(x, y, z), q, s3);
-      this.mesh.setMatrixAt(i, m4);
+      const z = -9.0 + depth * 13.0;
+      const y = -5.4 - this.seeds[j + 2] * 1.8 - Math.abs(z) * 0.05;
+      pos[i * 3] = x;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = z;
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    const attr = this.mesh.geometry.getAttribute('position') as BufferAttribute;
+    attr.needsUpdate = true;
   }
 }
-
 // ── thermals: warm rising columns you can see ───────────────────────────────
 
 /**
@@ -195,8 +283,8 @@ export class ThermalColumn {
     this.group.visible = level > 0.01;
     if (!this.group.visible) return;
     this.group.position.set(x, y, z);
-    this.material.opacity = 0.05 * level;
-    this.shell.uniforms.uOpacity.value = 0.018 * level;
+    this.material.opacity = 0.035 * level;
+    this.shell.uniforms.uOpacity.value = 0.010 * level;
     for (let i = 0; i < this.rings.length; i++) {
       const t = (time * 0.42 + i / this.rings.length) % 1;
       this.rings[i].position.y = t * this.height;

@@ -1,0 +1,98 @@
+# The look: making GUST read as a place, not a render
+
+Written 2026-11-12, after the first lighting and atmosphere pass. Screenshots in
+`docs/images/` are real frames from the build in this repository, captured
+headlessly at 1280×800, not mock-ups.
+
+---
+
+## The complaint, taken seriously
+
+The build looked "generated": flat, evenly lit, pastel, no shadows anywhere,
+a hard banded sky, a foreground of solid white icosahedra that read as snow.
+None of that is a content problem — the diorama, the wind, the four acts were
+already there. It was a **lighting and air** problem, which is the same problem
+that separates a student low-poly scene from *Moss*.
+
+## The references, and the specific thing borrowed from each
+
+| Reference | What it actually does | What changed here |
+| --- | --- | --- |
+| **Moss** (Polyarc) | Every object is anchored by a visible shadow and a warm key; the diorama is lit like a miniature on a table, not like an open world. | One directional sun with a real 1024 px shadow map, frustum bound to the diorama (`configureSunShadows`). Flat-shaded scenery now casts and receives. |
+| **Astro Bot: Rescue Mission** | Materials stay readable at arm's length because the key-to-fill ratio is high and the silhouette is always slightly brighter than the background. | Key light raised, hemisphere fill rebuilt per sky palette, and a fresnel rim on every opaque surface (`addRimLight`). |
+| **Red Matter 2** | The "expensive" look is mostly highlight roll-off: nothing clips to paper white. | ACES filmic tone mapping at 1.18 exposure, replacing `NoToneMapping`. |
+| **Tetris Effect** | Atmosphere is a substance you look *through* — layered haze, never a flat backdrop. | The cloud sea was rebuilt from solid icosahedra to a point-sprite mist: soft alpha puffs, per-point size and drift, fog-tinted by distance. One draw call. |
+| **Walkabout Mini Golf** | Distance readability: far objects desaturate into the fog instead of competing. | Fog colour now drives both the sky blend and the cloud mist, and rain fades with fog instead of glowing through it. |
+| **Half-Life: Alyx / The Room VR** | Nothing non-diegetic is ever allowed over play. | The wordmark used to float over live gameplay when starting mid-course; it now leaves the frame the moment a run is in progress. The lens vignette exists only on a flat screen and switches off when a session starts. |
+| **Demeo** | Tabletop framing: the whole board is legible from a seated pose, nothing important is cropped at the edge of vision. | Camera pulled back, FOV narrowed 70°→66°, looking further down at the diorama. |
+| **Beat Saber** | The eye needs one unmistakable focal point. | The seed remains the brightest thing in frame; the sun's disc and halo were strengthened so it reads as a light source rather than a painted circle. |
+
+## Before / after
+
+| Before | After (dawn) |
+| --- | --- |
+| ![](images/look-before.png) | ![](images/look-after-dawn.png) |
+
+| After (storm) |
+| --- |
+| ![](images/look-after-storm.png) |
+
+## What changed, file by file
+
+| File | Change |
+| --- | --- |
+| `src/render/look.ts` **(new)** | One place for the whole look: tone mapping + exposure, shadow map setup, the scene-wide pass that gives opaque surfaces shadows and a rim, and the quality switch that turns shadows off at `?quality=0.5`. |
+| `src/render/sky.ts` | Sun disc/halo strengthened; fBm-free dithering to kill 8-bit banding; dome tessellation raised 32×16 → 64×40 (the old facets showed as a seam across the sky); storm palette re-filled so islands are readable instead of silhouetted. |
+| `src/render/extras.ts` | `CloudSea` rewritten as a single `Points` cloud with a procedural puff shader; thermal columns and their rings quietened so they suggest air instead of a tan cylinder. |
+| `src/render/air.ts` | Rain: opacity 0.20–0.60 → 0.10–0.30, cooler tint, fog enabled — it was reading as television static against a dark sky. |
+| `src/systems/gust.ts` | Renderer configured before first compile; scene dressed once after assembly; wordmark fix; flat-screen vignette. |
+| `iwsdk.config.json` | Camera reframed for the diorama. |
+
+Verified after the pass: `tsc --noEmit` clean, **124/124 tests pass**, production
+build succeeds.
+
+## How the screenshots were made
+
+There is no browser in this sandbox and the Playwright CDN is unreachable, so
+the frames were captured with a Chromium binary that ships *inside* an npm
+package (`@sparticuz/chromium`), launched through `playwright-core`, with
+SwiftShader for WebGL 2. It renders the real dev server — the same code a Quest
+runs. That loop (edit → capture → look) is how each tuning decision above was
+checked rather than guessed.
+
+## What this pass does **not** fix
+
+Being blunt, because "looks amazing" is easy to claim and hard to earn:
+
+1. **Animation is the next ceiling.** Nothing here added secondary motion
+   quality — grass and petals bend, but there is no anticipation, no
+   squash-and-stretch on the seed, no weight. *Astro Bot* and *Moss* live on
+   this, and it is worth more than another lighting tweak.
+2. **Material variety is still one flat palette.** Every surface is the same
+   Lambert response. Moss differentiates stone, moss, cloth and water by
+   roughness and edge wear, not by hue.
+3. **Audio is the most under-used realism channel.** *Tetris Effect* earns its
+   "real" feeling largely through sound following the world. GUST's score is
+   procedural but not yet spatially reactive to the wind field the way the
+   visuals are.
+4. **Hand presence is unproven.** No screenshot can show whether hands feel
+   *yours*. That needs a headset, and it is the single biggest presence lever
+   left.
+5. **Performance is unmeasured.** A 1024 px shadow map plus a rim term is not
+   free on Quest 3 at 72 Hz. `?quality=0.5` disables shadows, but the real
+   number needs a device profiler.
+6. **One authored glance is missing.** Every top VR product has a signature
+   beat in the first thirty seconds. GUST's is the seed lifting on your sweep —
+   it deserves bespoke animation, sound and light rather than the general
+   particle burst it gets.
+
+## Next, in priority order
+
+1. Seed feel: anticipation, drag, squash on landing, a shadow that tracks it.
+2. Hand presence: soft contact shadow of the palm on the diorama, and a haptic
+   tick the moment a gesture is recognised.
+3. Audio: wind-driven filters so the score breathes with the same field the
+   grass does.
+4. Device pass: shadows on/off at 72 Hz, then decide the budget.
+5. Material pass: three roughness behaviours (foliage, stone, water) instead of
+   one.
