@@ -977,6 +977,10 @@ export class GustSystem extends createSystem({}) {
       pulse: game.pulse,
       pulseWarning: game.pulseWarning,
       pan: lead ? this.pan(lead.pos.x) : 0,
+      // the same field the grass, the rain and the seed read
+      windX: field.ambient.x,
+      windZ: field.ambient.z,
+      turbulence: field.turbulence,
     });
     this.updateHud(presenting);
   }

@@ -147,3 +147,59 @@ Frame cost. The shadow map now has grass, foliage, stone and islands in it, and
 the rim term runs on every opaque fragment. On a desktop GPU that is nothing;
 on a Quest 3 at 72 Hz it is a real question, and `?quality=0.5` (shadows off) is
 the fallback until someone profiles it on device.
+
+---
+
+# Third pass: sound
+
+The score was already synthesised; what it was not was *driven*. The wind made
+the grass move and the rain fall, and the music ran beside it on its own terms.
+This pass wires the synthesiser to the same field, so a gust you can see is a
+gust you can hear.
+
+## What changed
+
+| Change | Why |
+| --- | --- |
+| `src/audio/mix.ts` **(new)** | Every wind-to-sound mapping in one pure module: air cutoff, hand cutoff, chord openness, gust swell, stereo pan, ducking. No Web Audio, so it is unit-testable. |
+| **The chord breathes** | The three pads now run through one shared lowpass whose cutoff follows wind and turbulence — calm air keeps the harmony closed and warm, a blow opens it. A gust opens it further for a moment, then it settles. |
+| **Stereo from the field** | The world's air bed is panned by the prevailing wind direction; the pads lean *against* it, so the mix does not all move together. Below a walking-pace breeze the direction centres, because noise has no direction. |
+| **Ducking** | The world bed drops up to 45% while the player is making wind, so their own gesture is always the loudest thing. |
+| **`AnalyserNode` on the master** | `spectrum()`, `centroid()` and `level()` exist so the mix can be *measured* instead of admired. |
+
+## Measured
+
+The audio update was isolated from the game loop and driven with known frames,
+then the actual `AudioParam`s and the live spectrum were read back:
+
+| Frame | Chord cutoff | World pan | Pad pan | World gain | Spectral centroid |
+| --- | --- | --- | --- | --- | --- |
+| calm | 420 Hz | 0.000 | 0.000 | 0.051 | 358 Hz |
+| wind +3, turb. 1.2 | 2120 Hz | **+0.500** | −0.203 | 0.246 | 755 Hz |
+| wind −3, turb. 1.2 | 2120 Hz | **−0.457** | +0.168 | 0.256 | 798 Hz |
+| hand wind 8 + wind +3 | 1920 Hz | +0.461 | −0.174 | **0.146** | 2913 Hz |
+
+And through the real game loop, a gust in flight:
+
+| | centroid | chord cutoff | swell |
+| --- | --- | --- | --- |
+| before | 302 Hz | 658 Hz | 0.00 |
+| 160 ms after a gust | **1362 Hz** | **700 Hz** | 0.40 |
+| 2.6 s later | 948 Hz | 659 Hz | 0.00 |
+
+So: the chord opens with wind and closes again, the bed leans the way the wind
+blows and flips when it reverses, the chord counters it, and the player's own
+wind pushes the world bed down. `tsc` clean, **132/132 tests pass** (8 new mix
+tests), build succeeds.
+
+## What still cannot be checked here
+
+- **Timbre.** These are measurements, not listening. Whether the pad opening
+  from 420 to 2120 Hz sounds *good* rather than *harsh* needs ears, and I have
+  none in this environment. The cutoff ceiling and Q are the two knobs to
+  revisit first.
+- **Headset audio.** Quest does its own spatialisation; `StereoPannerNode` is
+  the flat-screen approximation. In a session this wants `PannerNode` with HRTF,
+  positioned at the wind's origin.
+- **Levels against the real mix.** The compressor thresholds were tuned before
+  the chord moved; the pad may now sit too hot during a storm.
