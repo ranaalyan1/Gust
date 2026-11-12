@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="theme-color" content="#f2a184" />
+    <meta name="description" content="GUST: your hands are the wind. Carry a dandelion seed across a living sky. Plays in a headset with hand tracking, or in any browser with a mouse or a finger." />
+    <meta property="og:title" content="GUST" />
+    <meta property="og:description" content="Your hands are the wind. Carry a dandelion seed across a living sky." />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f2a184'/%3E%3Cg stroke='%23fff' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M16 27V13M16 13 8 6M16 13l8-7M16 13V4M16 13 5 11M16 13l11-2'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <title>GUST</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        /* the dawn sky, so the very first frame is already the world */
+        background: linear-gradient(#27407e 0%, #c98a86 46%, #f2a184 58%, #7d6594 100%);
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+      }
+      #scene-container {
+        position: fixed;
+        inset: 0;
+      }
+      #wordmark {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 15%;
+        text-align: center;
+        pointer-events: none;
+        color: #fff;
+        font: 200 clamp(40px, 9vw, 92px) / 1 ui-rounded, 'Segoe UI', system-ui, sans-serif;
+        letter-spacing: 0.42em;
+        text-indent: 0.42em;
+        text-shadow: 0 2px 30px rgba(40, 30, 80, 0.35);
+        opacity: 0.94;
+        transition: opacity 2.4s ease, transform 2.4s ease;
+        z-index: 4;
+      }
+      body.gust-playing #wordmark {
+        opacity: 0;
+        transform: translateY(-14px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div id="wordmark" aria-hidden="true">GUST</div>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>
