@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, Group, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
+import { Color, CubeCamera, Group, LinearMipmapLinearFilter, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -43,6 +43,17 @@ import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
 import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
 import { Room } from '../render/room.js';
+import {
+  JOURNAL_STORAGE_KEY,
+  type Journal,
+  entryFor,
+  firstBook,
+  addEntry,
+  parseJournal,
+  sanitizeKeeper,
+  serializeJournal,
+  today,
+} from '../core/journal.js';
 import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloom } from '../render/islands.js';
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
@@ -57,7 +68,7 @@ import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalCo
  * jar on a desk. Gesture thresholds scale with this number, so the *physical*
  * feel of a sweep is unchanged: only the size of the world it moves.
  */
-const UNIT = 18;
+const UNIT = 30;
 const S = 1 / UNIT;
 /** Radius of the palm markers, in simulation metres. */
 const PALM = 0.3;
@@ -112,6 +123,7 @@ export class GustSystem extends createSystem({}) {
   private readonly root = new Group();
   private sky!: Sky;
   private room!: Room;
+  private journal!: Journal;
   private readonly roomAt = new Vector3();
   private readonly islandViews = new Map<number, IslandView>();
   private readonly courseProps = new Group();
@@ -182,6 +194,19 @@ export class GustSystem extends createSystem({}) {
     } catch {
       saved = null; // private mode etc.: the garden simply lives for this visit
     }
+    // the keeper's book: the ledger on the desk is this data, in ink
+    let savedBook: string | null = null;
+    try {
+      if (flag('reset')) localStorage.removeItem(JOURNAL_STORAGE_KEY);
+      savedBook = localStorage.getItem(JOURNAL_STORAGE_KEY);
+    } catch {
+      savedBook = null;
+    }
+    let book = savedBook ? parseJournal(savedBook) : firstBook();
+    const keeper = params.get('keeper');
+    if (keeper) book = { ...book, keeper: sanitizeKeeper(keeper) };
+    this.journal = book;
+
     const quality = num('quality', 1);
     configureRenderer(renderer, { quality });
     this.game = new Game({
@@ -201,8 +226,25 @@ export class GustSystem extends createSystem({}) {
     // The specimen desk. The islands are no longer a landscape in the sky; they
     // are an object on a table, under one lamp, inside brass and glass.
     this.room = new Room();
+    this.room.setJournal(this.journal);
+    this.room.setKeeper(this.journal.keeper);
     this.scene.add(this.room.group);
     this.world.createTransformEntity(this.room.group);
+
+    // Brass and glass are nothing but their reflections, and a room has no HDR
+    // sky to borrow. Render the room into a small cube once, hand it to the
+    // metal, and never pay for it again.
+    {
+      const cube = new WebGLCubeRenderTarget(128, { generateMipmaps: true, minFilter: LinearMipmapLinearFilter });
+      const cubeCam = new CubeCamera(0.02, 8, cube);
+      cubeCam.position.set(this.anchor.x, this.anchor.y - 0.01, this.anchor.z + 0.05);
+      this.scene.add(cubeCam);
+      this.room.group.visible = false;
+      cubeCam.update(this.renderer, this.scene);
+      this.room.group.visible = true;
+      this.scene.remove(cubeCam);
+      this.room.applyEnvironment(cube.texture);
+    }
 
     this.foliage = new Foliage();
     this.foliage.density = quality;
@@ -276,8 +318,9 @@ export class GustSystem extends createSystem({}) {
   // ── placement ──────────────────────────────────────────────────────────────
 
   private viewHeight(): number {
-    // follow the seed's height only partly: the islands should feel like ground
-    return 0.95 + 0.42 * (this.game.focus.y - 0.95);
+    // Follow the seed's height only a little. The desk is furniture: in the room
+    // the camera does the following, and the world stays where the case holds it.
+    return 0.95 + 0.12 * (this.game.focus.y - 0.95);
   }
 
   private place(dt: number, presenting: boolean): void {
@@ -340,17 +383,17 @@ export class GustSystem extends createSystem({}) {
         cam.fov = 40;
         cam.updateProjectionMatrix();
       }
-      const tanV = Math.tan((cam.fov * Math.PI) / 360);
-      const halfW = span * 0.5 + 2.7;
-      this.frameW += (halfW - this.frameW) * (1 - Math.exp(-1.5 * dt));
-      const dist = Math.max((this.frameW * S) / (tanV * cam.aspect), (3.0 * S) / tanV);
       const px = this.pointer.present ? this.pointer.x : 0;
       const py = this.pointer.present ? this.pointer.y : 0;
-      // The room needs a viewer, not a god's-eye view of a course: sit back far
-      // enough to see the whole case, and look slightly down at the desk.
-      const back = dist * 1.42;
-      cam.position.set(this.anchor.x + px * 0.035, this.anchor.y + back * 0.30 + py * 0.015, this.anchor.z + back);
-      cam.lookAt(this.anchor.x, this.anchor.y - 0.055, this.anchor.z - 0.04);
+      // A chair at the desk, not a crane over a course: the eye sits a hand's
+      // width above the table and a forearm back from the glass, so the case
+      // fills the frame and the ledger falls away at the bottom right.
+      // The pointer nudges the eye a few millimetres, which is enough parallax
+      // for the desk to read as a place with depth.
+      const eyeZ = this.anchor.z + 0.66;
+      cam.position.set(this.anchor.x + 0.03 + px * 0.02, this.anchor.y + 0.135 + py * 0.012, eyeZ);
+      cam.lookAt(this.anchor.x, this.anchor.y + 0.030, this.anchor.z - 0.02);
+      void span;
     }
 
     const cos = Math.cos(this.yaw), sin = Math.sin(this.yaw);
@@ -576,6 +619,25 @@ export class GustSystem extends createSystem({}) {
         } catch {
           /* storage unavailable: the garden lasts for this visit only */
         }
+        // and the run goes into the book, in the keeper's own hand
+        const ambient = game.field.ambient;
+        this.journal = addEntry(
+          this.journal,
+          entryFor({
+            day: today(),
+            seeds: e.landed,
+            x: ambient.x,
+            z: ambient.z,
+            air: Math.min(1, Math.hypot(ambient.x, ambient.z) / 2.2),
+            course: game.course.mission.name,
+          }),
+        );
+        try {
+          localStorage.setItem(JOURNAL_STORAGE_KEY, serializeJournal(this.journal));
+        } catch {
+          /* the book lasts for this visit only */
+        }
+        this.room.setJournal(this.journal);
         const view = this.islandViews.get(game.course.goal.id);
         if (view) this.foliage.plantGarden(view, e.garden, e.garden.runs - 1);
         break;
@@ -999,7 +1061,9 @@ export class GustSystem extends createSystem({}) {
           (Math.random() - 0.5) * 1.2, 1.4 + Math.random() * 1.4, (Math.random() - 0.5) * 1.2);
       }
     }
-    this.sunbeam.update(goal.center.x, goal.center.y, goal.center.z, dt, this.sky.sunColor);
+    // There is no sunbeam indoors: the lamp is the only shaft of light, and it
+    // is already geometry.
+    this.sunbeam.mesh.visible = false;
     this.birds.update(dt, time);
     this.sparks.update(field, dt, time);
     this.petals.update(field, dt, time);

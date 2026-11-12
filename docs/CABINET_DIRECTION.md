@@ -70,3 +70,87 @@ This is a **first slice**, and it is not yet the concept. In priority order:
 5. **Performance.** MeshStandardMaterial + spot shadows is a heavier stack than
    the old flat-shaded build; this needs on-device measurement before anyone
    claims it runs at 72 Hz.
+
+---
+
+# Pass two — the human trace
+
+The first slice was a room with nobody in it. This pass puts a person on the
+desk: their book, their labels, their name in the brass. Frame:
+`docs/images/cabinet-paperwork.png` (the running build, 1280×800).
+
+## What went in
+
+| Change | Why it exists |
+| --- | --- |
+| **`src/render/ink.ts`** (new) | A software ink-and-paper rasteriser: laid papers, foxing, deckled edges, and a round nib that lays ink with `max` so a crossed stroke keeps one wet edge. No canvas, no fonts, no asset files — it runs in Node, so it is testable. |
+| **`src/render/pen.ts`** (new) | A single-stroke hand: 26 letters, 10 digits and punctuation as polylines in an em box, drawn with pressure that varies along the stroke, a lifted nib that leaves a dot, and a baseline that never quite settles. Capitals are small caps of the same hand — engraver's script. Same seed, same page. |
+| **`src/core/journal.ts`** (new) | The keeper's book as plain data: day, seeds home, wind bearing, how alive the air was. Parsed defensively, capped at 22 entries, newest first. The ledger on the desk *is* this data. |
+| **`src/render/marks.ts`** (new) | The paperwork: an open ledger with ruled pages, a spine, a ribbon and a pencil across the corner; three slips (a herbarium label, and two notes from the maker); a brass plaque with the keeper's name cut into it; a loupe; five loose achenes; the dried ring of a cup. |
+| **The book comes written in** | A new player finds nine entries in a previous keeper's hand, dated a fortnight back. Their own runs go in underneath. A save file is not an object with a history; a ledger is. |
+| **Every completed run is a line** | `runComplete` writes `12.xi.26 — nine came home / wind south-west` to the book, saves it to `localStorage['gust.journal.v1']`, and redraws the page. The newest line is written wetter, with a blot at the stop. |
+| **The name in the brass** | `?keeper=ADA LOVELACE` cuts the name into the plaque; without it the plate reads `KEEPER OF SMALL WEATHERS`. Sanitised to letters, spaces, `.`, `'`, `-`, 26 characters. |
+
+## What else changed to make the room hold up
+
+- **The world is 1:30, not 1:18.** At 1:18 the course was 39 cm and the bell jar
+  had to be wider than the desk. At 1:30 it is 23 cm — a specimen you lean over,
+  inside a 35 cm jar on a 1 m desk.
+- **A bell jar, not a hoop.** Wall, domed top, brass collar, knob; and a fresnel
+  shader on the glass (`opacity 0.03` face-on, bright rim at the silhouette), so
+  it reads as glass instead of a grey film.
+- **Reflections.** Brass is nothing but its reflection, and a room has no HDR sky
+  to borrow: the room renders itself into a 128 px cube once at startup and the
+  metal and glass use that. Six renders, once, no per-frame cost.
+- **The desk is rectangular where it is used.** The concentric leather disc was
+  the thing that made the scene look like a lazy susan; it is now a square
+  blotter under the book, and the jar stands on bare walnut with a contact
+  shadow under it.
+- **Contact shadows** under the jar, book, slips and loupe. The bulb's halo is a
+  radial-gradient sprite now, not a translucent sphere.
+- **No sunbeam indoors.** The shaft of light through the room was the outdoor
+  sunbeam system; the lamp is the only light that comes from anywhere.
+- **Camera**: a chair at the desk — eye a hand's width above the table, 0.66 m
+  from the glass, the ledger falling out of frame at the right. The seed's height
+  no longer drags the desk up and down (0.42 → 0.12 gain).
+
+## Verified, and how
+
+- `tsc --noEmit` clean; **156/156 tests**; `GUST_HTTP=1 vite build` succeeds.
+- New tests: `tests/pen.test.ts` (10) — ink is laid where the nib goes, ink does
+  not double on crossing, the hand is deterministic per seed, small caps stand
+  taller than x-height, every letter has a glyph. `tests/journal.test.ts` (14) —
+  dates, roman months, wind words, clamping, storage round-trip, and that
+  nonsense in storage yields an empty book rather than an error.
+- **The ledger really updates.** `/home/user/.browser/ledgerprobe.mjs` loads the
+  build, injects the `runComplete` event the game itself emits, and reads the
+  result back: `9 → 10` entries, newest `{ day: 20769, seeds: 7, bearing: 126,
+  course: "First Breath" }`, and `localStorage['gust.journal.v1']` contains it.
+  The same frame shows the new line at the top of the page.
+- **The plaque really takes a name**: the frame above was captured with
+  `?keeper=ADA LOVELACE`.
+
+## Still wrong — the honest list
+
+1. **The glass is still milky.** A fresnel rim plus reflections is most of the
+   way, but real glass also refracts the world behind it. That needs a
+   transmission pass or a screen-space sample; on Quest it needs measuring first.
+2. **The islands are still pancakes.** They are the specimen and they are the
+   weakest geometry in the frame: no strata, no coast, no scale cues beyond
+   grass. They need a rebuild with rock layers and a ragged shoreline.
+3. **Light has nowhere to fall.** Four dynamic lights is the budget; the room
+   behind the desk is still a black void with shelves floating in it.
+4. **No depth of field.** At 40 cm, everything is sharp, and that is the single
+   biggest reason the frame still reads as a render rather than a photograph.
+5. **Nothing is pickable.** The loupe lies there. Picking it up and having the
+   lens magnify is the next interaction, and the paperwork is what it magnifies.
+6. **On-device frame cost is unmeasured.** Spot shadows, a fresnel shader, a cube
+   map and four lights have never run on a headset. Do not quote a frame rate.
+
+## Flags added
+
+| Flag | Effect |
+| --- | --- |
+| `?keeper=NAME` | Cuts that name into the brass plaque. |
+| `?reset=1` | Clears the garden **and** the book. |
+| `npx vite-node scripts/pen-preview.ts` | Writes `pen-alphabet`, `pen-card`, `pen-ledger` PNGs to `/home/user/shots` so the hand can be looked at. |
