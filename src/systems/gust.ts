@@ -31,6 +31,7 @@ import {
   type PointerState,
   adaptMission,
   fallbackMission,
+  groundBelow,
   parseGarden,
   serializeGarden,
   validateMission,
@@ -45,7 +46,7 @@ import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloo
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
 import { SeedViews, buildDandelion } from '../render/seeds.js';
-import { Birds, CloudSea, PalmMarker, ShockRings, Sunbeam, ThermalColumn, softLightMaterial } from '../render/extras.js';
+import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalColumn, softLightMaterial } from '../render/extras.js';
 
 /** Simulation metres per real metre: the world is a 1:7 miniature. */
 const UNIT = 7;
@@ -120,6 +121,8 @@ export class GustSystem extends createSystem({}) {
   private breath!: Mesh;
   private readonly palms: [PalmMarker, PalmMarker] = [new PalmMarker(0xffffff, PALM), new PalmMarker(0xffffff, PALM)];
   private readonly hintPalms: [PalmMarker, PalmMarker] = [new PalmMarker(0xffd27a, PALM), new PalmMarker(0xffd27a, PALM)];
+  /** The shadow each palm throws on the diorama, so hands feel like objects in the room. */
+  private readonly palmShadows: [PalmShadow, PalmShadow] = [new PalmShadow(PALM), new PalmShadow(PALM)];
   private readonly spawn: StreakSpawn = {
     cx: 0, cy: 1, cz: 0,
     hands: [
@@ -218,6 +221,7 @@ export class GustSystem extends createSystem({}) {
       this.sparks.object,
     );
     for (const p of [...this.palms, ...this.hintPalms]) this.root.add(p.group);
+    for (const s of this.palmShadows) this.root.add(s.mesh);
 
     // Light the diorama like an object on a table: one sun with a real shadow,
     // a rim on every silhouette, filmic exposure. See src/render/look.ts.
@@ -460,16 +464,32 @@ export class GustSystem extends createSystem({}) {
         break;
       case 'gesture': {
         const g = e.gesture;
-        if (g.type === 'gust') this.audio.gust(g.strength, this.pan(g.position.x));
-        else if (g.type === 'clap') {
+        // The tick that turns a movement into a confirmed gesture. Both hands
+        // feel a two-handed gesture; one hand feels its own sweep. Tracked
+        // hands have no actuator and simply do not tick.
+        const tick = (side: 'left' | 'right', power: number) => {
+          if (this.autoplay) return;
+          this.xrHands.pulse(side, Math.min(0.8, 0.18 + power * 0.5), 16);
+        };
+        if (g.type === 'gust') {
+          this.audio.gust(g.strength, this.pan(g.position.x));
+          tick(g.hand === 0 ? 'left' : 'right', Math.min(1, g.strength / 6));
+        } else if (g.type === 'clap') {
           this.audio.clap(this.pan(g.position.x));
           this.rings.fire(g.position.x, g.position.y, g.position.z, game.hands.params.clapSpeed, game.hands.params.clapDuration);
           this.birds.scatter(g.position.x, g.position.y, g.position.z, 1);
           this.burst(g.position.x, g.position.y, g.position.z, 18, 4.5, WHITE, 0.07, 0.6);
-        } else if (g.type === 'whirl') this.audio.whirl();
-        else if (g.type === 'updraft') {
+          tick('left', 0.9);
+          tick('right', 0.9);
+        } else if (g.type === 'whirl') {
+          this.audio.whirl();
+          tick('left', 0.4);
+          tick('right', 0.4);
+        } else if (g.type === 'updraft') {
           this.audio.updraft();
           this.usedUpdraft = true;
+          tick('left', 0.3);
+          tick('right', 0.3);
         }
         break;
       }
@@ -822,6 +842,23 @@ export class GustSystem extends createSystem({}) {
       // in the headset the player's real hands are already visible
       const show = !presenting || this.autoplay;
       this.palms[i].update(show ? h : null, hands.streams[i].enabled ? hands.streams[i].strength : 0, dt);
+      // ground the hand: a palm over an island darkens it
+      const shadow = this.palmShadows[i];
+      if (h && show) {
+        const gy = groundBelow(game.course.terrain, h.position.x, h.position.z, h.position.y);
+        if (Number.isFinite(gy)) {
+          // Simulation units are 1:7, so a hand 20 cm above the table is 1.4 of
+          // them. Convert to world metres before deciding how strong a shadow
+          // a real hand would throw.
+          const height = Math.max(0, h.position.y - gy) * S;
+          shadow.place(h.position.x, gy, h.position.z, 1 + height * 2.2, Math.max(0, 1 - height / 0.5));
+        } else {
+          shadow.place(0, 0, 0, 1, 0);
+        }
+      } else {
+        shadow.place(0, 0, 0, 1, 0);
+      }
+
       const sp = this.spawn.hands[i];
       sp.active = h !== null;
       if (h) {
@@ -885,7 +922,9 @@ export class GustSystem extends createSystem({}) {
     this.rings.update(dt);
 
     // ── seeds ──
-    this.seeds.update(game.seeds, alpha, time, course.dandelion, course.seedCount > 1);
+    this.seeds.update(game.seeds, alpha, time, course.dandelion, course.seedCount > 1, (x, z, fromY) =>
+      groundBelow(course.terrain, x, z, fromY),
+    );
     this.trailClock += dt;
     if (this.trailClock > 0.028) {
       this.trailClock = 0;

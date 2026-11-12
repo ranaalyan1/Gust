@@ -8,6 +8,7 @@
 import {
   AdditiveBlending,
   BufferGeometry,
+  CircleGeometry,
   Color,
   CylinderGeometry,
   DoubleSide,
@@ -17,6 +18,7 @@ import {
   IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
+  MultiplyBlending,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -29,6 +31,7 @@ import type { Seed } from '../core/seed.js';
 import type { Course } from '../core/course.js';
 import { islandTop } from '../core/terrain.js';
 import { FlatBuilder } from './build.js';
+import { blobShadowMaterial } from './blob.js';
 
 export const MAX_SEEDS = 48;
 
@@ -72,10 +75,24 @@ const up = new Vector3(0, 1, 0);
 const axis = new Vector3();
 const pos = new Vector3();
 const scl = new Vector3();
+const shadowPos = new Vector3();
+/** CircleGeometry faces +Z; lay it flat on the ground. */
+const flatQ = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2);
 
 export class SeedViews {
   readonly group = new Group();
   private readonly mesh: InstancedMesh;
+  /**
+   * A soft blob under each seed, projected onto whatever is below it. Without
+   * it a seed reads as a sticker on the sky; with it, the eye knows exactly how
+   * high it is. (Reference: Half-Life: Alyx's object shadows, Moss's seeds.)
+   */
+  private readonly shadow: InstancedMesh;
+  /** Where each seed was last frame, to derive velocity without touching the core. */
+  private readonly lastPos = new Float32Array(MAX_SEEDS * 3);
+  private readonly squash = new Float32Array(MAX_SEEDS);
+  private readonly wasStatus: string[] = [];
+  private lastTime = 0;
   private readonly glow: Points;
   private readonly glowPos: Float32Array;
   private readonly glowColor: Float32Array;
@@ -92,6 +109,16 @@ export class SeedViews {
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.renderOrder = 25;
     this.group.add(this.mesh);
+
+    // Blob shadows. Multiply blending darkens whatever is behind, which is what
+    // a shadow does — an additive disc would glow instead.
+    const shadowMat = blobShadowMaterial();
+    this.shadow = new InstancedMesh(new CircleGeometry(1, 16), shadowMat, MAX_SEEDS);
+    this.shadow.count = 0;
+    this.shadow.frustumCulled = false;
+    this.shadow.instanceMatrix.setUsage(DynamicDrawUsage);
+    this.shadow.renderOrder = 6;
+    this.group.add(this.shadow);
 
     this.glowPos = new Float32Array(MAX_SEEDS * 3);
     this.glowColor = new Float32Array(MAX_SEEDS * 3);
@@ -141,8 +168,18 @@ export class SeedViews {
   }
 
   /** `alpha` is the fixed-step interpolation factor; `head` is the dandelion head centre. */
-  update(seeds: readonly Seed[], alpha: number, time: number, head: { x: number; y: number; z: number }, flock: boolean): void {
+  update(
+    seeds: readonly Seed[],
+    alpha: number,
+    time: number,
+    head: { x: number; y: number; z: number },
+    flock: boolean,
+    groundAt?: (x: number, z: number, fromY: number) => number,
+  ): void {
+    const dt = Math.min(0.1, Math.max(1e-4, time - this.lastTime));
+    this.lastTime = time;
     let n = 0;
+    let shadows = 0;
     for (let i = 0; i < seeds.length && n < MAX_SEEDS; i++) {
       const s = seeds[i];
       pos.set(
@@ -187,13 +224,54 @@ export class SeedViews {
       if (flock && s.status === 'flying') glow *= 0.42;
       if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0);
       axis.normalize();
+
+      // ── feel: stretch with speed, squash on the pop ──
+      // A body moving through air deforms; a body that has just been released
+      // squashes first. Both are read by the eye as weight, and neither changes
+      // the simulation by a millimetre.
+      const j = n * 3;
+      const dx = pos.x - this.lastPos[j];
+      const dy = pos.y - this.lastPos[j + 1];
+      const dz = pos.z - this.lastPos[j + 2];
+      const speed = Math.hypot(dx, dy, dz) / dt;
+      this.lastPos[j] = pos.x;
+      this.lastPos[j + 1] = pos.y;
+      this.lastPos[j + 2] = pos.z;
+
+      // Release: attached -> flying. Give it a short squeeze.
+      if (this.wasStatus[n] === 'attached' && s.status === 'flying') this.squash[n] = 0.16;
+      this.wasStatus[n] = s.status;
+      const pop = Math.max(0, this.squash[n]);
+      this.squash[n] = Math.max(0, pop - dt);
+
+      const stretch = s.status === 'flying' ? Math.min(0.5, Math.max(0, speed - 0.3) * 0.16) : 0;
+      const popT = pop > 0 ? pop / 0.16 : 0; // 1 -> 0
+      const along = 1 + stretch - 0.3 * popT;
+      const across = 1 / Math.sqrt(along) * (1 + 0.4 * popT);
+      scl.set(scale * across, scale * along, scale * across);
+
       qa.setFromUnitVectors(up, axis);
       qb.setFromAxisAngle(up, s.spin);
       qa.multiply(qb);
-      scl.set(scale, scale, scale);
       m4.compose(pos, qa, scl);
       this.mesh.setMatrixAt(n, m4);
-      const j = n * 3;
+
+      // ── its shadow, on whatever is underneath ──
+      if (groundAt) {
+        const gy = groundAt(pos.x, pos.z, pos.y);
+        if (Number.isFinite(gy)) {
+          const h = Math.max(0, pos.y - gy) / 7; // world metres (the world is 1:7)
+          const fade = Math.max(0, 1 - h / 0.32) * Math.min(1, 0.25 + s.glow * 0.35);
+          if (fade > 0.01) {
+            const r = (flock ? 0.06 : 0.11) * (1 + h * 2.2) * scale * fade;
+            scl.set(r, r, r);
+            shadowPos.set(pos.x, gy + 0.004, pos.z);
+            m4.compose(shadowPos, flatQ, scl);
+            this.shadow.setMatrixAt(shadows, m4);
+            shadows++;
+          }
+        }
+      }
       // the light sits in the pappus, a little above the achene
       this.glowPos[j] = pos.x + axis.x * 0.16 * scale;
       this.glowPos[j + 1] = pos.y + axis.y * 0.16 * scale;
@@ -206,6 +284,8 @@ export class SeedViews {
     }
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;
+    this.shadow.count = shadows;
+    this.shadow.instanceMatrix.needsUpdate = true;
     this.glowGeometry.setDrawRange(0, n);
     this.glowGeometry.attributes.position.needsUpdate = true;
     this.glowGeometry.attributes.color.needsUpdate = true;

@@ -19,6 +19,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  PlaneGeometry,
+  MultiplyBlending,
   Points,
   Quaternion,
   RingGeometry,
@@ -28,6 +30,7 @@ import {
 } from '@iwsdk/core';
 import type { HandSample } from '../core/hands.js';
 import { hash01 } from '../core/random.js';
+import { blobShadowMaterial } from './blob.js';
 
 const up = new Vector3(0, 1, 0);
 const fwd = new Vector3(0, 0, 1);
@@ -83,6 +86,36 @@ export class PalmMarker {
     this.ringMat.opacity = (0.5 + 0.5 * e) * this.level;
     this.breathMat.opacity = (0.03 + 0.1 * e) * this.level;
     this.breath.scale.set(1, 1, 0.55 + 0.9 * e);
+  }
+}
+
+/**
+ * The shadow a palm casts on the diorama.
+ *
+ * This is the cheapest presence trick in VR and one of the strongest: a real
+ * hand in a real room darkens the table under it, so a hand without a shadow
+ * reads as a cursor. (Reference: the object shadows in Half-Life: Alyx; every
+ * tabletop game from Demeo onward.)
+ */
+export class PalmShadow {
+  readonly mesh: Mesh;
+  private readonly material: MeshBasicMaterial;
+
+  constructor(size = 0.3) {
+    this.material = blobShadowMaterial();
+    // A plane scaled per frame; the texture supplies the soft falloff.
+    this.mesh = new Mesh(new PlaneGeometry(size * 2, size * 2), this.material);
+    this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = 6;
+    this.mesh.visible = false;
+  }
+
+  /** Place on the ground under the palm. `strength` 0..1 fades it out. */
+  place(x: number, y: number, z: number, scale: number, strength: number): void {
+    this.mesh.position.set(x, y + 0.005, z);
+    this.mesh.scale.setScalar(scale);
+    this.material.opacity = 0.46 * strength;
+    this.mesh.visible = strength > 0.02;
   }
 }
 
