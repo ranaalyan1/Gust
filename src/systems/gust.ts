@@ -42,14 +42,22 @@ import { XRHands } from '../input/xrHands.js';
 import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
 import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
+import { Room } from '../render/room.js';
 import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloom } from '../render/islands.js';
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
 import { SeedViews, buildDandelion } from '../render/seeds.js';
 import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalColumn, softLightMaterial } from '../render/extras.js';
 
-/** Simulation metres per real metre: the world is a 1:7 miniature. */
-const UNIT = 7;
+/**
+ * Simulation metres per real metre.
+ *
+ * 1:7 made the world a metre wide — a playset, not a specimen. At 1:18 the same
+ * cross-island course is about 39 cm across, which is what fits under a bell
+ * jar on a desk. Gesture thresholds scale with this number, so the *physical*
+ * feel of a sweep is unchanged: only the size of the world it moves.
+ */
+const UNIT = 18;
 const S = 1 / UNIT;
 /** Radius of the palm markers, in simulation metres. */
 const PALM = 0.3;
@@ -103,6 +111,8 @@ export class GustSystem extends createSystem({}) {
   // scene
   private readonly root = new Group();
   private sky!: Sky;
+  private room!: Room;
+  private readonly roomAt = new Vector3();
   private readonly islandViews = new Map<number, IslandView>();
   private readonly courseProps = new Group();
   private nextProps: Group | null = null;
@@ -188,6 +198,12 @@ export class GustSystem extends createSystem({}) {
     this.sky = new Sky(this.scene);
     this.world.createTransformEntity(this.sky.group);
 
+    // The specimen desk. The islands are no longer a landscape in the sky; they
+    // are an object on a table, under one lamp, inside brass and glass.
+    this.room = new Room();
+    this.scene.add(this.room.group);
+    this.world.createTransformEntity(this.room.group);
+
     this.foliage = new Foliage();
     this.foliage.density = quality;
     this.streaks = new WindStreaks(quality < 1 ? 260 : 440);
@@ -227,6 +243,14 @@ export class GustSystem extends createSystem({}) {
     // a rim on every silhouette, filmic exposure. See src/render/look.ts.
     configureSunShadows(this.sky.sun);
     dressScene(this.root);
+
+    // In the room the lamp is the only real light: the old sky sun stops
+    // casting, the dome goes away, and the cloud sea has nothing to do.
+    this.sky.hideDome();
+    this.sky.sun.castShadow = false;
+    this.clouds.mesh.visible = false;
+    this.birds.mesh.visible = false; // gulls belong outdoors; the dust is the life in here
+    renderer.setClearColor(0x0a0806, 1);
 
     // ── input ──
     this.pointer = new PointerInput(renderer.domElement);
@@ -284,8 +308,8 @@ export class GustSystem extends createSystem({}) {
       const valid = va.y > 0.25 && vb.lengthSq() > 1e-4;
       if (valid) {
         vb.normalize().negate(); // forward
-        vc.copy(va).addScaledVector(vb, 0.58);
-        vc.y = va.y - 0.3;
+        vc.copy(va).addScaledVector(vb, 0.86);
+        vc.y = va.y - 0.24;
         const off = Math.hypot(vc.x - this.anchor.x, vc.z - this.anchor.z) + Math.abs(vc.y - this.anchor.y) * 1.3;
         if (!this.anchored) {
           this.anchor.copy(vc);
@@ -322,8 +346,11 @@ export class GustSystem extends createSystem({}) {
       const dist = Math.max((this.frameW * S) / (tanV * cam.aspect), (3.0 * S) / tanV);
       const px = this.pointer.present ? this.pointer.x : 0;
       const py = this.pointer.present ? this.pointer.y : 0;
-      cam.position.set(this.anchor.x + px * 0.035, this.anchor.y + dist * 0.2 + py * 0.015, this.anchor.z + dist * 0.98);
-      cam.lookAt(this.anchor.x, this.anchor.y + 0.035, this.anchor.z);
+      // The room needs a viewer, not a god's-eye view of a course: sit back far
+      // enough to see the whole case, and look slightly down at the desk.
+      const back = dist * 1.42;
+      cam.position.set(this.anchor.x + px * 0.035, this.anchor.y + back * 0.30 + py * 0.015, this.anchor.z + back);
+      cam.lookAt(this.anchor.x, this.anchor.y - 0.055, this.anchor.z - 0.04);
     }
 
     const cos = Math.cos(this.yaw), sin = Math.sin(this.yaw);
@@ -816,6 +843,19 @@ export class GustSystem extends createSystem({}) {
     // ── sky, light, weather ──
     this.camera.getWorldPosition(va);
     this.sky.update(game.sky, dt, va.x, va.y, va.z);
+
+    // ── the room owns the light ──
+    // Root space puts simulation x=0 at the root's origin; the case has to sit
+    // over the middle of the course instead, so map the view centre out.
+    this.roomAt.set(this.viewX, 0.18, 0);
+    this.root.localToWorld(this.roomAt);
+    this.room.update(dt, this.roomAt, game.sky, time);
+    // a trace of sky survives at a high window, so faces never go black
+    this.sky.sun.intensity = 0.10;
+    this.sky.hemi.intensity = 0.22;
+    this.sky.fog.color.setRGB(0.055, 0.042, 0.034);
+    this.sky.fog.near = 0.45;
+    this.sky.fog.far = 2.6;
     if (this.lightningDelay >= 0) {
       this.lightningDelay -= dt;
       if (this.lightningDelay < 0 && game.sky.storm > 0.4) this.strike(0.9);

@@ -25,14 +25,14 @@ import { FlatBuilder, shade } from './build.js';
 const RINGS = 7;
 const SEGS = 30;
 
-const GRASS = new Color(0x79c257);
-const GRASS_2 = new Color(0x9ad464);
-const DRY = new Color(0xb9a892);
-const DRY_2 = new Color(0xa39582);
-const EARTH = new Color(0x9a6a48);
-const ROCK = new Color(0x7d6f78);
-const ROCK_DEEP = new Color(0x4d4458);
-const STONE = new Color(0x857c86);
+const GRASS = new Color(0x5d7040);
+const GRASS_2 = new Color(0x74884c);
+const DRY = new Color(0x9c8a6a);
+const DRY_2 = new Color(0x84765c);
+const EARTH = new Color(0x6d4a33);
+const ROCK = new Color(0x6a5f5e);
+const ROCK_DEEP = new Color(0x3b3333);
+const STONE = new Color(0x6f6660);
 
 const c1 = new Color();
 const c2 = new Color();
@@ -184,8 +184,8 @@ export function updateBloom(view: IslandView, dt: number, speed = 1.5): void {
   if (view.bloom.w >= view.bloomTarget) view.bloom.z = 0;
 }
 
-const MOSS = new Color(0x6f9a5a);
-const LICHEN = new Color(0xb9b3a0);
+const MOSS = new Color(0x556b3e);
+const LICHEN = new Color(0x9a9282);
 
 /**
  * Stone obstacles: the storm gate's slabs and the spires. A collision box is a

@@ -176,6 +176,11 @@ export class Sky {
     scene.background = null;
   }
 
+  /** The room has its own walls; the sky dome is for the outdoor build. */
+  hideDome(): void {
+    this.dome.visible = false;
+  }
+
   /** Call when lightning strikes. */
   strike(power = 1): void {
     this.flash = Math.max(this.flash, power);
