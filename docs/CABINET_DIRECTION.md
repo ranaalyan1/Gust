@@ -255,6 +255,24 @@ into. It gutters with the lamp, because it *is* the lamp.
 The first version was a string of beads — a narrow gaussian times a deep sine
 gives you sequins dropped on the desk. A caustic is a line.
 
+## The air in the room
+
+A lamp in a dark room is not a bright spot on a wall. It is a **volume**: the
+air between the bulb and the desk has dust in it, and the dust gives the light
+an edge you can see. `src/render/shaft.ts` is a cone shaded as air rather than
+as a surface — brightest through its middle, gone at its silhouette, fading out
+at both ends, and thickened and thinned by two slow waves beating against each
+other.
+
+It took three goes, and the two failures are worth recording:
+
+1. The cone was rotated 180° up into the lamp shade, where nobody could see it.
+2. The alpha was `1 − |N·V|`, which is bright *at the silhouette* — that draws a
+   hard outline round the beam, which is exactly the "triangle of glass hanging
+   in the room" the exercise was meant to avoid.
+3. The dust was a per-cell hash, which at this scale is visible cubes. It is two
+   sines now.
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

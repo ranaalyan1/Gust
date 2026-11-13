@@ -45,6 +45,7 @@ import {
   PointsMaterial,
   RGBAFormat,
   RepeatWrapping,
+  ShaderMaterial,
   SpotLight,
   Sprite,
   SpriteMaterial,
@@ -57,6 +58,7 @@ import { hash01 } from '../core/random.js';
 import type { SkyBlend } from '../core/game.js';
 import type { Journal } from '../core/journal.js';
 import { glassMaterial } from './glass.js';
+import { aimShaft, lightShaft } from './shaft.js';
 import { DeskMarks } from './marks.js';
 import { blobTexture } from './blob.js';
 
@@ -301,6 +303,7 @@ export class Room {
   private bulbMesh!: Mesh;
   private readonly shade: Mesh;
   private readonly glow: Sprite;
+  private readonly shaft!: Mesh;
   /** The two caustics: the ring on the desk, and the one on the velvet. */
   private readonly causticDesk: Mesh;
   private readonly causticBed: Mesh;
@@ -637,6 +640,20 @@ export class Room {
     this.glow.position.copy(bulbMesh.position);
     this.inner.add(this.glow);
 
+    // ── the shaft ──
+    // A lamp in a dark room is a volume, not a bright spot: the air between the
+    // bulb and the desk has dust in it, and the dust gives the light an edge you
+    // can see. The cone is shaded like air, not like a surface — gone at its
+    // silhouette, because you are looking through the edge, not at it.
+    const dropToDesk = bulbMesh.position.y - (TABLE_Y + 0.015);
+    this.shaft = lightShaft({ radius: 0.54, height: 1, strength: 0.44, color: 0xffcf9c });
+    this.shaft.position.copy(bulbMesh.position);
+    this.shaft.scale.set(1, dropToDesk, 1);
+    // aim the mouth at the specimen, not at the lamp's own foot: rotating about
+    // z by a *positive* angle tilts -y toward +x
+    this.shaft.rotation.set(-0.16, 0, 0.36);
+    this.inner.add(this.shaft);
+
     // ── dust in the beam ──
     const n = 110;
     this.dustPos = new Float32Array(n * 3);
@@ -951,6 +968,10 @@ export class Room {
     this.bulb.color.copy(c);
     this.bulb.intensity = 0.75 * flicker;
     (this.glow.material as SpriteMaterial).color.copy(c);
+    const shaftMat = this.shaft.material as ShaderMaterial;
+    shaftMat.uniforms.uColor.value.copy(c);
+    shaftMat.uniforms.uStrength.value = (0.40 + 0.24 * sky.golden + 0.10 * sky.dawn) * flicker;
+    shaftMat.uniforms.uTime.value = time;
     // the caustic is the lamp, bent: it gutters when the lamp gutters
     const ck = (0.42 + 0.30 * sky.golden + 0.12 * sky.dawn) * flicker;
     (this.causticDesk.material as MeshBasicMaterial).opacity = ck * 0.5;
