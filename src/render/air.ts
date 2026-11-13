@@ -350,7 +350,7 @@ export class Rain {
     const pa = new BufferAttribute(this.positions, 3);
     pa.setUsage(DynamicDrawUsage);
     this.geometry.setAttribute('position', pa);
-    this.material = new LineBasicMaterial({ color: 0xbfd3ee, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    this.material = new LineBasicMaterial({ color: 0xa9bdd8, transparent: true, opacity: 0, depthWrite: false, fog: true });
     this.object = new LineSegments(this.geometry, this.material);
     this.object.frustumCulled = false;
     this.object.renderOrder = 15;
@@ -365,7 +365,9 @@ export class Rain {
   update(dt: number, level: number, cx: number, cy: number, windX: number, windZ: number, blocked: (x: number, y: number, z: number) => boolean): void {
     this.object.visible = level > 0.01;
     if (!this.object.visible) return;
-    this.material.opacity = 0.2 + 0.4 * level;
+    // Bright streaks over a dark storm sky read as television static; rain in
+    // front of a bright sky reads as rain. Keep it low and let the fog thin it.
+    this.material.opacity = 0.10 + 0.20 * level;
     const active = Math.max(8, Math.round(this.n * Math.min(1, 0.25 + level)));
     this.geometry.setDrawRange(0, active * 2);
     const fall = 9.5;

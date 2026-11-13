@@ -46,10 +46,10 @@ const PALETTES: Record<keyof SkyBlend, Palette> = {
     sunDir: [-0.55, 0.32, -0.77],
     sunSize: 0.9,
     light: 0xfff0dc,
-    lightIntensity: 2.3,
-    skyLight: 0xbfd9ff,
-    groundLight: 0xe8a98a,
-    hemiIntensity: 1.25,
+    lightIntensity: 2.9,
+    skyLight: 0xa8c8f2,
+    groundLight: 0xd98f6e,
+    hemiIntensity: 0.95,
     fog: 0xd99a8e,
     cloud: 0xf6d2cf,
     cloudShade: 0x9a6f9c,
@@ -62,10 +62,10 @@ const PALETTES: Record<keyof SkyBlend, Palette> = {
     sunDir: [0.1, 0.75, -0.65],
     sunSize: 0.25,
     light: 0xa9bcd6,
-    lightIntensity: 1.25,
-    skyLight: 0x7f93b0,
-    groundLight: 0x2c3340,
-    hemiIntensity: 1.15,
+    lightIntensity: 1.45,
+    skyLight: 0x93a9c6,
+    groundLight: 0x40495a,
+    hemiIntensity: 1.75,
     fog: 0x4a586b,
     cloud: 0x6d7c90,
     cloudShade: 0x333d4c,
@@ -153,13 +153,19 @@ export class Sky {
           vec3 col = mix(uHorizon, uZenith, pow(clamp(h * 1.25, 0.0, 1.0), 0.5));
           col = mix(col, uAbyss, smoothstep(0.04, -0.4, h));
           float s = max(dot(d, normalize(uSunDir)), 0.0);
-          col += uSun * (pow(s, 900.0 / uSunSize) * 1.6 + pow(s, 28.0) * 0.38 * uSunSize + pow(s, 5.0) * 0.16 * uSunSize);
+          // Three terms: the disc, the tight halo, and the broad sky glow that
+          // makes the sun feel like it is lighting the air, not painted on it.
+          col += uSun * (pow(s, 900.0 / uSunSize) * 2.6 + pow(s, 26.0) * 0.55 * uSunSize + pow(s, 4.0) * 0.22 * uSunSize);
           col += vec3(0.75, 0.82, 1.0) * uFlash * (0.35 + 0.65 * smoothstep(-0.2, 0.6, h));
+          // 8-bit banding in a smooth gradient is the loudest "this is CG" tell
+          // there is; a fraction of a code value of noise removes it.
+          float dither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+          col += (dither - 0.5) / 255.0;
           gl_FragColor = vec4(col, 1.0);
           #include <colorspace_fragment>
         }`,
     });
-    this.dome = new Mesh(new SphereGeometry(80, 32, 16), this.material);
+    this.dome = new Mesh(new SphereGeometry(80, 64, 40), this.material);
     this.dome.frustumCulled = false;
     this.dome.renderOrder = -1000;
     this.group.add(this.dome);
@@ -168,6 +174,11 @@ export class Sky {
     this.group.add(this.sun.target);
     scene.fog = this.fog;
     scene.background = null;
+  }
+
+  /** The room has its own walls; the sky dome is for the outdoor build. */
+  hideDome(): void {
+    this.dome.visible = false;
   }
 
   /** Call when lightning strikes. */

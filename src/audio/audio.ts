@@ -9,6 +9,9 @@
  * that (and on browsers with no Web Audio at all).
  */
 
+import { airCutoff, gustSwell, handCutoff, padCutoff, padPan, windPan, worldDuck } from './mix.js';
+import { Score } from './score.js';
+
 export interface AudioFrame {
   /** Peak wind speed the hands are making (m/s). */
   handEnergy: number;
@@ -26,10 +29,17 @@ export interface AudioFrame {
   pulseWarning: number;
   /** -1..1 where the action is, for panning. */
   pan: number;
+  /** Prevailing wind, in simulation units per second (the field's own vector). */
+  windX?: number;
+  windZ?: number;
+  /** 0..1-ish roughness of the air; texture rather than force. */
+  turbulence?: number;
 }
 
 const PENTATONIC = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
 const noteHz = (semitones: number, base = 261.63) => base * Math.pow(2, semitones / 12);
+
+export type Mood = 'dawn' | 'storm' | 'golden';
 
 export class GustAudio {
   private ctx: AudioContext | null = null;
@@ -45,16 +55,97 @@ export class GustAudio {
   private pulseFilter!: BiquadFilterNode;
   private pulseGain!: GainNode;
   private pads: { gain: GainNode; key: 'dawn' | 'storm' | 'golden' }[] = [];
+  private padBus!: BiquadFilterNode;
+  private padPanner!: StereoPannerNode;
+  private windPanner!: StereoPannerNode;
+  private analyser: AnalyserNode | null = null;
+  /** 0..1 brief opening of the harmony after a gust. */
+  private swell = 0;
   private panner: StereoPannerNode | null = null;
   private birdTimer = 2;
   private stillness = 0;
   private dripTimer = 0;
   private plantStep = 0;
   private lastPlant = 0;
+  private voiceGain!: GainNode;
+  private voiceSource: AudioBufferSourceNode | null = null;
+  private readonly voiceBuffers = new Map<string, AudioBuffer>();
+  private readonly voiceLoads = new Map<string, Promise<AudioBuffer | null>>();
+  private music!: GainNode;
+  private score: Score | null = null;
+  private mood: import('./audio.js').Mood = 'dawn';
+  private voiceUntil = 0;
   muted = false;
 
   get running(): boolean {
     return this.ctx !== null && this.ctx.state === 'running';
+  }
+
+  /**
+   * Speak a line from the Weather Mind.
+   *
+   * The lines are pre-recorded, because a browser's speech synthesis is not a
+   * voice — it is a caption read out loud, and it undoes every other thing in
+   * this room that was made by hand. They live in public/voice and are decoded
+   * once, on demand.
+   */
+  say(id: string): void {
+    const ctx = this.ctx;
+    if (!ctx || this.muted) return;
+    const base = typeof document !== 'undefined' ? document.baseURI : 'http://localhost/';
+    const play = (buf: AudioBuffer) => {
+      try {
+        this.voiceSource?.stop();
+      } catch {
+        /* already finished */
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this.voiceGain);
+      src.start();
+      this.voiceSource = src;
+      this.voiceUntil = ctx.currentTime + buf.duration;
+      // duck the room: the wind steps back and lets the sentence land
+      const t = ctx.currentTime;
+      this.worldGain.gain.cancelScheduledValues(t);
+      this.worldGain.gain.setTargetAtTime(0.4, t, 0.12);
+      // and the music steps back with it, so the sentence has room
+      this.score?.duck(0.35);
+      src.onended = () => {
+        if (this.voiceSource === src) this.voiceSource = null;
+        try {
+          this.worldGain.gain.setTargetAtTime(1, ctx.currentTime, 0.6);
+        } catch {
+          /* context closed */
+        }
+        this.score?.duck(1);
+      };
+    };
+    const ready = this.voiceBuffers.get(id);
+    if (ready) {
+      play(ready);
+      return;
+    }
+    let load = this.voiceLoads.get(id);
+    if (!load) {
+      load = fetch(new URL(`voice/${id}.mp3`, base).href)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('no line'))))
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => {
+          this.voiceBuffers.set(id, buf);
+          return buf;
+        })
+        .catch(() => null);
+      this.voiceLoads.set(id, load);
+    }
+    void load.then((buf) => {
+      if (buf) play(buf);
+    });
+  }
+
+  /** True while a line is still being spoken. */
+  get speaking(): boolean {
+    return this.ctx !== null && this.ctx.currentTime < this.voiceUntil;
   }
 
   /** Call from a user gesture. Safe to call repeatedly. */
@@ -119,9 +210,51 @@ export class GustAudio {
         this.handGain.connect(this.master);
         this.seedGain.connect(this.master);
       }
-      this.worldGain.connect(this.master);
+      // the air bed leans with the prevailing wind instead of sitting mono
+      try {
+        this.windPanner = ctx.createStereoPanner();
+        this.worldGain.connect(this.windPanner).connect(this.master);
+      } catch {
+        this.worldGain.connect(this.master);
+      }
+      // the Weather Mind speaks above the room, not inside it: its own gain,
+      // straight to the master, and the wind ducks under it while it talks
+      this.voiceGain = ctx.createGain();
+      this.voiceGain.gain.value = 1.5;
+      this.voiceGain.connect(this.master);
+
+      // the score sits far back: a room, not a concert hall
+      this.music = ctx.createGain();
+      this.music.gain.value = 1;
+      this.music.connect(this.master);
+      this.score = new Score(ctx, this.music);
+      this.score.start(ctx.currentTime + 0.4);
+
       this.rainGain.connect(this.master);
       this.pulseGain.connect(this.master);
+
+      // Everything the harmony does passes through one filter and one panner,
+      // so the wind can open the chord and lean it without touching the voices.
+      this.padBus = ctx.createBiquadFilter();
+      this.padBus.type = 'lowpass';
+      this.padBus.frequency.value = 700;
+      this.padBus.Q.value = 0.5;
+      try {
+        this.padPanner = ctx.createStereoPanner();
+        this.padBus.connect(this.padPanner).connect(this.master);
+      } catch {
+        this.padBus.connect(this.master);
+      }
+
+      // For measurement: the mix can be read back without a speaker.
+      try {
+        this.analyser = ctx.createAnalyser();
+        this.analyser.fftSize = 1024;
+        this.analyser.smoothingTimeConstant = 0.6;
+        this.master.connect(this.analyser);
+      } catch {
+        this.analyser = null;
+      }
 
       // three quiet pads, one per act, crossfaded by the sky
       const pad = (key: 'dawn' | 'storm' | 'golden', notes: number[], type: OscillatorType) => {
@@ -130,7 +263,7 @@ export class GustAudio {
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.value = key === 'storm' ? 420 : 900;
-        lp.connect(gain).connect(this.master);
+        lp.connect(gain).connect(this.padBus);
         notes.forEach((n, i) => {
           const o = ctx.createOscillator();
           o.type = type;
@@ -163,18 +296,34 @@ export class GustAudio {
     param.setTargetAtTime(value, this.ctx.currentTime, time);
   }
 
+  /** Which act the sky is in; the score changes mode on the bar. */
+  setMood(mood: import('./audio.js').Mood): void {
+    if (mood === this.mood) return;
+    this.mood = mood;
+    this.score?.setMood(mood);
+  }
+
   update(dt: number, f: AudioFrame): void {
     const ctx = this.ctx;
-    if (!ctx || ctx.state !== 'running') return;
+    if (!ctx) return;
+    // the score keeps time even while the tab is suspended mid-line
+    this.score?.update(ctx.currentTime);
+    if (ctx.state !== 'running') return;
     this.set(this.master.gain, this.muted ? 0 : 0.9, 0.2);
     const e = Math.min(1, f.handEnergy / 9);
+    const windX = f.windX ?? 0;
+    const windZ = f.windZ ?? 0;
+    const windSpeed = Math.hypot(windX, windZ);
+    const turbulence = f.turbulence ?? 0;
     // hand wind: louder and brighter the harder you sweep
     this.set(this.handGain.gain, e * e * 0.55 + e * 0.12, 0.05);
-    this.set(this.handFilter.frequency, 260 + 1500 * e, 0.06);
-    // the world's own air
+    this.set(this.handFilter.frequency, handCutoff(f.handEnergy), 0.06);
+    // the world's own air, ducked while the player is making wind so their own
+    // gesture is always the loudest thing in the mix
     const a = Math.min(1, f.ambient / 3.2);
-    this.set(this.worldGain.gain, 0.05 + 0.22 * a + 0.2 * f.storm, 0.4);
-    this.set(this.worldFilter.frequency, 220 + 420 * a + 200 * f.storm, 0.4);
+    this.set(this.worldGain.gain, (0.05 + 0.22 * a + 0.2 * f.storm) * worldDuck(f.handEnergy), 0.4);
+    this.set(this.worldFilter.frequency, airCutoff(f.ambient, f.storm), 0.4);
+    if (this.windPanner) this.set(this.windPanner.pan, windPan(windX, windSpeed), 0.5);
     // the seed's whisper: air moving past it
     const s = Math.min(1, f.seedAir / 6);
     this.set(this.seedGain.gain, s * 0.1, 0.07);
@@ -185,7 +334,16 @@ export class GustAudio {
     this.set(this.pulseGain.gain, p * 0.5, 0.12);
     this.set(this.pulseFilter.frequency, 110 + 260 * f.pulse + 90 * f.pulseWarning, 0.12);
     if (this.panner) this.set(this.panner.pan, Math.max(-0.7, Math.min(0.7, f.pan)), 0.15);
-    for (const pad of this.pads) this.set(pad.gain.gain, f[pad.key] * 0.075, 1.2);
+
+    // ── the chord breathes with the air ──
+    // A gust opens the harmony for a moment and then it settles; steady wind
+    // holds it open. This is the whole idea: one field drives grass, rain,
+    // seed and score, so a gust you see is also a gust you hear.
+    this.swell = Math.max(0, this.swell - dt * 1.5);
+    const cutoff = padCutoff(f.ambient, turbulence, f.storm) * (1 + 0.55 * this.swell);
+    this.set(this.padBus.frequency, cutoff, 0.12);
+    if (this.padPanner) this.set(this.padPanner.pan, padPan(windX, windSpeed), 0.7);
+    for (const pad of this.pads) this.set(pad.gain.gain, f[pad.key] * 0.075 * (1 + 0.45 * this.swell), 1.2);
 
     // birds sing when the air has been still for a while (and never in a storm)
     const still = e < 0.12 && f.storm < 0.3;
@@ -317,6 +475,48 @@ export class GustAudio {
   gust(strength: number, pan = 0): void {
     const e = Math.min(1, strength / 12);
     this.burst(0.3 + 0.25 * e, 'bandpass', 500 + 900 * e, 220, 0.1 + 0.2 * e, 0.025, pan);
+    this.swell = Math.max(this.swell, gustSwell(strength));
+  }
+
+  /**
+   * The live spectrum of the mix, for measurement rather than playback. Fills
+   * `out` with decibel-scaled bin magnitudes and returns whether audio is
+   * actually running.
+   */
+  spectrum(out: Float32Array<ArrayBuffer>): boolean {
+    if (!this.analyser) return false;
+    this.analyser.getFloatFrequencyData(out);
+    return true;
+  }
+
+  /** Spectral centroid in Hz — a single number for "how bright is the mix". */
+  centroid(): number {
+    if (!this.analyser) return 0;
+    const bins = this.analyser.frequencyBinCount;
+    const data = new Float32Array(bins);
+    this.analyser.getFloatFrequencyData(data);
+    const nyquist = (this.ctx?.sampleRate ?? 48000) / 2;
+    let weighted = 0;
+    let total = 0;
+    for (let i = 1; i < bins; i++) {
+      const mag = Math.pow(10, data[i] / 20); // dBFS -> linear
+      weighted += mag * (i / bins) * nyquist;
+      total += mag;
+    }
+    return total > 1e-9 ? weighted / total : 0;
+  }
+
+  /** Linear RMS of the mix, 0..1. */
+  level(): number {
+    if (!this.analyser) return 0;
+    const data = new Float32Array(this.analyser.frequencyBinCount);
+    this.analyser.getFloatFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const mag = Math.pow(10, data[i] / 20);
+      sum += mag * mag;
+    }
+    return Math.sqrt(sum / data.length);
   }
 
   clap(pan = 0): void {

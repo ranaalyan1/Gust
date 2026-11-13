@@ -99,30 +99,95 @@ function flowerGeometry(): BufferGeometry {
   return b.build();
 }
 
+/**
+ * A tree, built the way a tree is built: a trunk that forks, forks again, and
+ * carries its leaves only at the ends. The previous version was a trunk with
+ * three icosahedra on it, which at this scale is a green ball on a stick — the
+ * single most recognisable "procedural low-poly" silhouette there is.
+ *
+ * Everything here is air. Branches thin as they climb, every fork is a slightly
+ * different angle, and the clumps are small enough that the tree is mostly sky.
+ */
 function treeGeometry(): BufferGeometry {
   const b = new FlatBuilder();
-  const bark = new Color(0.45, 0.31, 0.24);
+  const bark = new Color(0.42, 0.29, 0.22);
   const tmp = new Color();
-  const add = (geo: BufferGeometry, ox: number, oy: number, oz: number, base: Color, vary: number, key: number) => {
+  const white = new Color(1, 1, 1);
+  const mat = new Matrix4();
+  const rot = new Matrix4();
+  const up = new Vector3(0, 1, 0);
+  const dir = new Vector3();
+  const side = new Vector3();
+  const tip = new Vector3();
+  const axis = new Vector3();
+
+  const part = (geo: BufferGeometry, base: Color, vary: number, key: number): void => {
     const g = geo.index ? geo.toNonIndexed() : geo;
     const p = g.getAttribute('position');
     for (let i = 0; i < p.count; i += 3) {
-      shade(tmp, base, (hash01(key + i * 7) - 0.5) * vary + (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) * 0.06);
+      shade(tmp, base, (hash01(key + i * 7) - 0.5) * vary + (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) * 0.05);
       b.tri(
-        p.getX(i) + ox, p.getY(i) + oy, p.getZ(i) + oz,
-        p.getX(i + 1) + ox, p.getY(i + 1) + oy, p.getZ(i + 1) + oz,
-        p.getX(i + 2) + ox, p.getY(i + 2) + oy, p.getZ(i + 2) + oz,
+        p.getX(i), p.getY(i), p.getZ(i),
+        p.getX(i + 1), p.getY(i + 1), p.getZ(i + 1),
+        p.getX(i + 2), p.getY(i + 2), p.getZ(i + 2),
         tmp.clone(),
       );
     }
   };
-  const trunk = new CylinderGeometry(0.045, 0.085, 0.62, 5, 1, true);
-  add(trunk, 0, 0.31, 0, bark, 0.12, 1);
-  // canopy is white: instance colour tints it (leaf green, blossom pink, autumn gold)
-  const white = new Color(1, 1, 1);
-  add(new IcosahedronGeometry(0.36, 0), 0, 0.82, 0, white, 0.2, 11);
-  add(new IcosahedronGeometry(0.26, 0), 0.22, 0.66, 0.08, white, 0.2, 23);
-  add(new IcosahedronGeometry(0.24, 0), -0.2, 0.7, -0.1, white, 0.2, 37);
+
+  /**
+   * A limb from `from` along `d` for `len`, then forks.
+   *
+   * Every scratch vector here is local. The first version shared them across
+   * the recursion, so each child started from where the previous child had
+   * left off and the "tree" came out as a vertical stack of clumps.
+   */
+  const limb = (from: Vector3, d: Vector3, len: number, rad: number, depth: number, key: number): void => {
+    const frame = new Matrix4();
+    const axisV = new Vector3().copy(up).cross(d);
+    const angle = Math.acos(Math.max(-1, Math.min(1, up.dot(d))));
+    if (axisV.lengthSq() < 1e-8) axisV.set(1, 0, 0);
+    frame.makeRotationAxis(axisV.normalize(), angle);
+
+    const geo = new CylinderGeometry(rad * 0.66, rad, len, 5, 1, true);
+    geo.applyMatrix4(frame);
+    geo.translate(0, len * 0.5, 0);
+    geo.translate(from.x, from.y, from.z);
+    part(geo, bark, 0.14, key);
+    geo.dispose();
+
+    const tip = new Vector3().copy(from).addScaledVector(d, len);
+    if (depth === 0) {
+      for (let i = 0; i < 3; i++) {
+        const r = 0.048 + hash01(key * 3 + i) * 0.028;
+        const lump = new IcosahedronGeometry(r, 0);
+        lump.translate(
+          tip.x + (hash01(key * 5 + i) - 0.5) * 0.09,
+          tip.y + (hash01(key * 7 + i) - 0.25) * 0.06,
+          tip.z + (hash01(key * 11 + i) - 0.5) * 0.09,
+        );
+        part(lump, white, 0.24, key + i * 13);
+        lump.dispose();
+      }
+      return;
+    }
+
+    const branches = depth === 3 ? 3 : 2;
+    for (let i = 0; i < branches; i++) {
+      const k = key * 17 + i * 29;
+      const spread = 0.55 + hash01(k) * 0.42;
+      const around = (i / branches) * Math.PI * 2 + hash01(k + 3) * 1.4;
+      const side = new Vector3(Math.cos(around), 0, Math.sin(around)).applyMatrix4(frame).normalize();
+      const dir = new Vector3().copy(d).multiplyScalar(Math.cos(spread))
+        .addScaledVector(side, Math.sin(spread));
+      dir.y += 0.16 - hash01(k + 7) * 0.26;
+      dir.normalize();
+      limb(tip, dir, len * (0.62 + hash01(k + 11) * 0.18), rad * 0.66, depth - 1, k);
+    }
+  };
+
+  const trunkDir = new Vector3(0.06, 1, 0.03).normalize();
+  limb(new Vector3(0, 0, 0), trunkDir, 0.26, 0.052, 3, 1);
   return b.build();
 }
 

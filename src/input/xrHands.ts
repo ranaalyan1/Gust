@@ -12,6 +12,8 @@ export interface XRPalm {
   normal: Vector3;
   /** True when this pose came from a tracked hand rather than a controller. */
   isHand: boolean;
+  /** The live input source, kept so the shell can fire haptics on it. */
+  source?: XRInputSource | null;
 }
 
 const a = new Vector3();
@@ -35,8 +37,28 @@ export class XRHands {
   readonly left: XRPalm = { active: false, position: new Vector3(), normal: new Vector3(0, 1, 0), isHand: false };
   readonly right: XRPalm = { active: false, position: new Vector3(), normal: new Vector3(0, 1, 0), isHand: false };
 
+  /**
+   * A short haptic tick. This is how a gesture becomes a *confirmed* gesture:
+   * in a headset, the hand that just made the wind should feel it.
+   * Tracked hands have no actuator, so this is a no-op there rather than an error.
+   */
+  pulse(side: 'left' | 'right', intensity = 0.35, durationMs = 18): void {
+    const palm = side === 'left' ? this.left : this.right;
+    const actuators = palm.source?.gamepad?.hapticActuators;
+    if (!actuators) return;
+    for (let i = 0; i < actuators.length; i++) {
+      try {
+        void actuators[i].pulse(intensity, durationMs);
+      } catch {
+        // an actuator that refuses to pulse must never break the frame
+      }
+    }
+  }
+
   update(frame: XRFrame | null | undefined, ref: XRReferenceSpace | null | undefined): void {
     this.left.active = this.right.active = false;
+    this.left.source = null;
+    this.right.source = null;
     if (!frame || !ref) return;
     const sources = frame.session.inputSources;
     for (let i = 0; i < sources.length; i++) {
@@ -44,6 +66,7 @@ export class XRHands {
       if (src.handedness !== 'left' && src.handedness !== 'right') continue;
       const palm = src.handedness === 'left' ? this.left : this.right;
       if (palm.active) continue;
+      palm.source = src as XRInputSource;
       try {
         if (src.hand) {
           // palm frame from three joints: wrist, index knuckle, pinky knuckle

@@ -22,17 +22,35 @@ import { type Island, type Obstacle, islandBottom, islandRim, islandTop } from '
 import { hash01 } from '../core/random.js';
 import { FlatBuilder, shade } from './build.js';
 
-const RINGS = 7;
-const SEGS = 30;
+const RINGS = 8;
+const SEGS = 46;
 
-const GRASS = new Color(0x79c257);
-const GRASS_2 = new Color(0x9ad464);
-const DRY = new Color(0xb9a892);
-const DRY_2 = new Color(0xa39582);
-const EARTH = new Color(0x9a6a48);
-const ROCK = new Color(0x7d6f78);
-const ROCK_DEEP = new Color(0x4d4458);
-const STONE = new Color(0x857c86);
+const GRASS = new Color(0x51603a);
+const GRASS_2 = new Color(0x66743f);
+const DRY = new Color(0x9c8a6a);
+const DRY_2 = new Color(0x84765c);
+const EARTH = new Color(0x5a3d2b);
+const ROCK = new Color(0x6a5f5e);
+/**
+ * Beds. Rock is laid down in courses, and courses are what the eye counts on
+ * the underside of a floating island. Colour only: the silhouette is already
+ * doing the work, and cutting extra ledges into it just made the thing look
+ * like a decorated cake.
+ */
+const STRATA = [
+  new Color(0x7d6852),
+  new Color(0x584a3c),
+  new Color(0x6f5741),
+  new Color(0x453d36),
+  new Color(0x5f5142),
+];
+const ROCK_DEEP = new Color(0x3b3333);
+/** Wet moss, the dark green that only grows in the shade of a rock. */
+const MOSS_DARK = new Color(0x36441f);
+/** Lichen: the pale crust that takes the windward face and nothing else. */
+const CRUST = new Color(0x9aa187);
+const BARE = new Color(0x6b573f);
+const STONE = new Color(0x6f6660);
 
 const c1 = new Color();
 const c2 = new Color();
@@ -110,6 +128,15 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const ca = Math.pow(r / RINGS, 0.8);
       const cb = Math.pow((r + 1) / RINGS, 0.8);
       const v = rnd(s, r, 1);
+      // Patches, not noise. Ground is not evenly speckled: it is moss in the
+      // folds and scoured bare on the shoulders, in patches a hand wide.
+      const pxw = px((ca + cb) * 0.5, (ta + tb) * 0.5);
+      const pzw = pz((ca + cb) * 0.5, (ta + tb) * 0.5);
+      const seedA = hash01(island.shapeSeed + 31) * 6.283;
+      const seedB = hash01(island.shapeSeed + 37) * 6.283;
+      const patch = Math.sin(pxw * 7.3 + seedA) * Math.cos(pzw * 6.1 + seedB) + 0.5 * Math.sin((pxw - pzw) * 3.7);
+      const bare = Math.max(0, patch - 0.55) * 0.8;
+      const moss = Math.max(0, -patch - 0.35) * 0.9;
       const coast = r === RINGS - 1;
       shade(c2, v > 0.5 ? GRASS : GRASS_2, (v - 0.5) * 0.22);
       shade(c1, v > 0.5 ? DRY : DRY_2, (v - 0.5) * 0.18);
@@ -117,20 +144,27 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
         c2.lerp(EARTH, 0.55);
         c1.lerp(EARTH, 0.35);
       }
+      // and the patches, before the coast takes over
+      c2.lerp(MOSS_DARK, Math.min(0.55, moss));
+      c1.lerp(BARE, Math.min(0.5, bare));
       quad(top, ca, cb, ta, tb, c1.clone(), c2.clone(), false);
     }
     // ── cliff band ──
     {
       const ax = px(1, ta), az = pz(1, ta), bx = px(1, tb), bz = pz(1, tb);
       shade(c1, EARTH, (rnd(s, 40, 2) - 0.5) * 0.25);
+      c1.lerp(STRATA[0], 0.35);
+      if (hash01(island.shapeSeed + s * 53) > 0.72) c1.lerp(CRUST, 0.35);
       const col = c1.clone();
-      const k = 0.94;
-      b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.1, az * k, col);
-      b.tri(bx, top(1, tb), bz, bx * k, bot(1, tb) - 0.1, bz * k, ax * k, bot(1, ta) - 0.1, az * k, col);
+      // The crust overhangs the rock it is made of. That, more than any amount
+      // of noise on the coastline, is what stops an island reading as a coin
+      // with a shadow under it.
+      const k = 1.045;
+      b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.02, az * k, col);
+      b.tri(bx, top(1, tb), bz, bx * k, bot(1, tb) - 0.02, bz * k, ax * k, bot(1, ta) - 0.02, az * k, col);
     }
     // ── underside: craggy rock tapering to a point ──
-    const UNDER = 5;
-    const k = 0.94; // tucked slightly under the cliff band
+    const UNDER = 6;
     // vertex of the underside grid; the crag offset is keyed by the vertex so neighbours share it (no cracks)
     const U = (r: number, seg: number, out: number[]) => {
       const th = ((seg % SEGS) / SEGS) * Math.PI * 2;
@@ -138,9 +172,11 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const depth = r / UNDER;
       const jag = r === 0 || r === UNDER ? 0 : (rnd(seg % SEGS, r, 5) - 0.5) * 0.34 * island.depth * (1 - depth * 0.6);
       const wob = r === 0 || r === UNDER ? 1 : 1 + (rnd(seg % SEGS, r, 9) - 0.5) * 0.3;
-      out[0] = px(c, th) * k * wob;
-      out[1] = bot(c, th) - (r === 0 ? 0.1 : 0) - Math.abs(jag) * 0.6 + jag * 0.4;
-      out[2] = pz(c, th) * k * wob;
+      // the first ring hangs under the lip, then the rock pulls in beneath it
+      const rk = r === 0 ? 1.045 : 0.94 - 0.035 * (r / UNDER);
+      out[0] = px(c, th) * rk * wob;
+      out[1] = bot(c, th) - (r === 0 ? 0.02 : 0) - Math.abs(jag) * 0.6 + jag * 0.4;
+      out[2] = pz(c, th) * rk * wob;
     };
     const A: number[] = [], B: number[] = [], C: number[] = [], D: number[] = [];
     for (let r = 0; r < UNDER; r++) {
@@ -149,8 +185,16 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       U(r, s + 1, B);
       U(r + 1, s, C);
       U(r + 1, s + 1, D);
-      c1.copy(ROCK).lerp(ROCK_DEEP, depth);
-      shade(c1, c1, (rnd(s, r, 3) - 0.5) * 0.3);
+      // each ring lands on a bed boundary, and the boundary is not flat: the
+      // beds dip and rise around the island, which is what makes them read as
+      // strata rather than as banding in a shader
+      const bedF = (depth + (rnd(s, 0, 12) - 0.5) * 0.34) * STRATA.length;
+      const bi = Math.max(0, Math.min(STRATA.length - 1, Math.floor(bedF)));
+      const frac = Math.max(0, Math.min(1, bedF - bi));
+      c1.copy(STRATA[bi]);
+      if (bi < STRATA.length - 1 && frac > 0.72) c1.lerp(STRATA[bi + 1], (frac - 0.72) / 0.28);
+      c1.lerp(ROCK_DEEP, Math.pow(depth, 2.4) * 0.7);
+      shade(c1, c1, (rnd(s, r, 3) - 0.5) * 0.26);
       b.tri(A[0], A[1], A[2], B[0], B[1], B[2], C[0], C[1], C[2], c1.clone());
       if (r < UNDER - 1) {
         shade(c1, c1, (rnd(s, r, 4) - 0.5) * 0.2);
@@ -159,12 +203,44 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
     }
   }
 
+  // Stones breaking through the turf on the weather side. Half-buried, because
+  // a stone lying on the ground is a prop and a stone coming out of the ground
+  // is geology.
+  const stones: Mesh[] = [];
+  const stoneCount = 5 + Math.floor(hash01(island.shapeSeed + 61) * 4);
+  for (let i = 0; i < stoneCount; i++) {
+    const th = (i / stoneCount) * Math.PI * 2 + hash01(island.shapeSeed + i * 7) * 0.9;
+    const c = 0.58 + hash01(island.shapeSeed + i * 11) * 0.34;
+    const sx = px(c, th);
+    const sz = pz(c, th);
+    const sy = top(c, th);
+    const r = 0.022 + hash01(island.shapeSeed + i * 13) * 0.03;
+    const geo = new IcosahedronGeometry(r, 0);
+    const pos = geo.getAttribute('position') as Float32BufferAttribute;
+    // squash and jitter the icosahedron so it is not an icosahedron
+    for (let k = 0; k < pos.count; k++) {
+      const f = 0.72 + hash01(island.shapeSeed + i * 17 + k) * 0.6;
+      pos.setXYZ(k, pos.getX(k) * f * 1.25, pos.getY(k) * f * 0.72, pos.getZ(k) * f * 1.15);
+    }
+    geo.computeVertexNormals();
+    const shade2 = 0.82 + hash01(island.shapeSeed + i * 19) * 0.45;
+    const mat = new MeshLambertMaterial({
+      color: new Color(STONE.r * shade2, STONE.g * shade2, STONE.b * shade2),
+      flatShading: true,
+    });
+    const m = new Mesh(geo, mat);
+    m.position.set(sx, sy - r * 0.35, sz);
+    m.rotation.set(hash01(island.shapeSeed + i * 23) * 3.0, hash01(island.shapeSeed + i * 29) * 3.0, 0);
+    stones.push(m);
+  }
+
   const bloom = new Vector4(0, 0, 0, lush ? 99 : -1);
   const material = islandMaterial(bloom);
   const mesh = new Mesh(b.build(true), material);
   const group = new Group();
   group.position.set(island.center.x, island.center.y, island.center.z);
   group.add(mesh);
+  for (const st of stones) group.add(st);
   return { island, group, material, bloom, bloomTarget: lush ? 99 : -1, lush, bloomAge: 0 };
 }
 
@@ -184,8 +260,8 @@ export function updateBloom(view: IslandView, dt: number, speed = 1.5): void {
   if (view.bloom.w >= view.bloomTarget) view.bloom.z = 0;
 }
 
-const MOSS = new Color(0x6f9a5a);
-const LICHEN = new Color(0xb9b3a0);
+const MOSS = new Color(0x556b3e);
+const LICHEN = new Color(0x9a9282);
 
 /**
  * Stone obstacles: the storm gate's slabs and the spires. A collision box is a
@@ -210,7 +286,10 @@ export function buildObstacle(o: Obstacle, key: number): Mesh {
   const box = o.kind === 'box';
   const hx = box ? o.half.x : o.radius, hy = box ? o.half.y : o.radius, hz = box ? o.half.z : o.radius;
   // which way does this rock taper? (walls only get chiselled)
-  const role = !box ? 0 : o.center.y - hy > 1.2 ? 1 : o.center.y < 0 ? -1 : 0;
+  // Every box gets chiselled. A middle-height obstacle used to keep its six
+  // flat faces and read as a green cube sitting in a specimen case; the only
+  // face that stays true to the collision box is the one the seed flies past.
+  const role = !box ? 0 : o.center.y - hy > 1.2 ? 1 : -1;
   const hashAt = (x: number, y: number, z: number, salt: number) =>
     hash01(key * 7 + salt + Math.round(x * 37) * 3 + Math.round(y * 41) * 5 + Math.round(z * 43) * 7);
   for (let i = 0; i < pos.count; i++) {

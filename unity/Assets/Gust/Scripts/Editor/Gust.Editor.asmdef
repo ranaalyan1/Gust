@@ -1,0 +1,19 @@
+{
+    "name": "Gust.Editor",
+    "rootNamespace": "Gust.Editor",
+    "references": [
+        "Gust.Core",
+        "Gust.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
