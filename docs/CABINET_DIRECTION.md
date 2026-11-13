@@ -179,6 +179,25 @@ is exactly the kind of thing that only shows up when you look at the picture.)
 
 ![the lens](images/cabinet-the-lens.png)
 
+## Pass three, continued
+
+- **The islands have ground.** Patches, not noise: moss in the folds, scoured
+  bare on the shoulders, lichen on the windward cliff, boulders half-buried at
+  the coast where the crust is thin. The undersides carry beds of rock instead
+  of a gradient — colour only, because cutting extra ledges into the silhouette
+  made the island read as a decorated cake.
+- **The case is lit from inside.** Glass scatters a little of the light that
+  falls on it, and that scatter is the only thing lighting the middle of a
+  specimen case. A point light held strictly inside the jar stands in for it, so
+  it can never reach the desk and flatten the lamp's shadow.
+- **The window is off-frame, and stays there.** I built one, twice, and could
+  not get it into the picture: the room is a metre and a bit across and the
+  camera is aimed at the desk, so the only wall in frame is the one behind the
+  shelves. What is visible instead is the *falloff* — a cold wash down the
+  panelling on the right and the raw edge it cuts on the ledger. That is how
+  off-camera light actually behaves, so the effect survived and the window did
+  not.
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

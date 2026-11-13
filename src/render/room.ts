@@ -390,6 +390,14 @@ export class Room {
     card.castShadow = true;
     this.inner.add(card);
 
+    // Glass does not pass light cleanly: it scatters a little of it, and that
+    // scatter is the only thing lighting the middle of a specimen case from
+    // inside. This is a cheat for that scatter, held strictly inside the jar so
+    // it can never reach the desk and flatten the lamp's shadow.
+    const glassFill = new PointLight(0xffd2a0, 0.55, 0.30, 1.6);
+    glassFill.position.set(-0.02, TABLE_Y + CASE_H * 0.62, 0.02);
+    this.inner.add(glassFill);
+
     // a scatter of small stones on the bed: no specimen case was ever arranged
     // without loose grit in the bottom of it
     const gritMat = new MeshStandardMaterial({ color: 0x6f665d, roughness: 0.95, flatShading: true });
@@ -415,7 +423,7 @@ export class Room {
         map: blobTexture(),
         color: 0xffce90,
         transparent: true,
-        opacity: 0.24,
+        opacity: 0.15,
         depthWrite: false,
         blending: AdditiveBlending,
       }),
@@ -507,8 +515,12 @@ export class Room {
     // room is the same orange and the picture reads as a colour grade rather
     // than as a place. Warm lamp against cool daylight is the oldest lighting
     // trick there is, and it is the one this frame was missing.
-    const windowLight = new PointLight(0x8fb4d8, 1.15, 5.0 * ROOM_K, 1.0);
-    windowLight.position.set(1.15, TABLE_Y + 1.15, -1.05);
+    const windowLight = new PointLight(0x8fb4d8, 2.4, 5.0 * ROOM_K, 1.0);
+    // The window itself is off-frame to the right and always will be: the room is
+    // a metre and a bit across and the camera is aimed at the desk. What you see
+    // is not the window, it is its falloff — the cold wash down the panelling and
+    // the raw edge it cuts on the ledger.
+    windowLight.position.set(1.95, TABLE_Y + 1.05, -1.70);
     this.inner.add(windowLight);
     // and a hard, low rim from the same side, to draw a cold line down the
     // right shoulder of the dome and the brass

@@ -92,7 +92,9 @@ const WARM = new Color(1.0, 0.93, 0.7);
 const WHITE = new Color(1, 1, 1);
 const SKYBLUE = new Color(0.62, 0.8, 1.0);
 const FIREFLY = new Color(0.9, 1.0, 0.45);
-const PETALS = [0xff8fab, 0xffc971, 0xfff3b0, 0xffffff, 0xf7a8d8].map((c) => new Color(c));
+// In a room lit by one lamp, a pure white petal is the brightest object in the
+// frame and the eye goes straight to it. Cream, not white.
+const PETALS = [0xff8fab, 0xffc971, 0xfff3b0, 0xf3e2c0, 0xf7a8d8].map((c) => new Color(c));
 
 export class GustSystem extends createSystem({}) {
   private game!: Game;

@@ -45,6 +45,11 @@ const STRATA = [
   new Color(0x5f5142),
 ];
 const ROCK_DEEP = new Color(0x3b3333);
+/** Wet moss, the dark green that only grows in the shade of a rock. */
+const MOSS_DARK = new Color(0x36441f);
+/** Lichen: the pale crust that takes the windward face and nothing else. */
+const CRUST = new Color(0x9aa187);
+const BARE = new Color(0x6b573f);
 const STONE = new Color(0x6f6660);
 
 const c1 = new Color();
@@ -123,6 +128,15 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const ca = Math.pow(r / RINGS, 0.8);
       const cb = Math.pow((r + 1) / RINGS, 0.8);
       const v = rnd(s, r, 1);
+      // Patches, not noise. Ground is not evenly speckled: it is moss in the
+      // folds and scoured bare on the shoulders, in patches a hand wide.
+      const pxw = px((ca + cb) * 0.5, (ta + tb) * 0.5);
+      const pzw = pz((ca + cb) * 0.5, (ta + tb) * 0.5);
+      const seedA = hash01(island.shapeSeed + 31) * 6.283;
+      const seedB = hash01(island.shapeSeed + 37) * 6.283;
+      const patch = Math.sin(pxw * 7.3 + seedA) * Math.cos(pzw * 6.1 + seedB) + 0.5 * Math.sin((pxw - pzw) * 3.7);
+      const bare = Math.max(0, patch - 0.55) * 0.8;
+      const moss = Math.max(0, -patch - 0.35) * 0.9;
       const coast = r === RINGS - 1;
       shade(c2, v > 0.5 ? GRASS : GRASS_2, (v - 0.5) * 0.22);
       shade(c1, v > 0.5 ? DRY : DRY_2, (v - 0.5) * 0.18);
@@ -130,6 +144,9 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
         c2.lerp(EARTH, 0.55);
         c1.lerp(EARTH, 0.35);
       }
+      // and the patches, before the coast takes over
+      c2.lerp(MOSS_DARK, Math.min(0.55, moss));
+      c1.lerp(BARE, Math.min(0.5, bare));
       quad(top, ca, cb, ta, tb, c1.clone(), c2.clone(), false);
     }
     // ── cliff band ──
@@ -137,6 +154,7 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const ax = px(1, ta), az = pz(1, ta), bx = px(1, tb), bz = pz(1, tb);
       shade(c1, EARTH, (rnd(s, 40, 2) - 0.5) * 0.25);
       c1.lerp(STRATA[0], 0.35);
+      if (hash01(island.shapeSeed + s * 53) > 0.72) c1.lerp(CRUST, 0.35);
       const col = c1.clone();
       const k = 0.94;
       b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.1, az * k, col);
@@ -181,12 +199,44 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
     }
   }
 
+  // Stones breaking through the turf on the weather side. Half-buried, because
+  // a stone lying on the ground is a prop and a stone coming out of the ground
+  // is geology.
+  const stones: Mesh[] = [];
+  const stoneCount = 5 + Math.floor(hash01(island.shapeSeed + 61) * 4);
+  for (let i = 0; i < stoneCount; i++) {
+    const th = (i / stoneCount) * Math.PI * 2 + hash01(island.shapeSeed + i * 7) * 0.9;
+    const c = 0.58 + hash01(island.shapeSeed + i * 11) * 0.34;
+    const sx = px(c, th);
+    const sz = pz(c, th);
+    const sy = top(c, th);
+    const r = 0.022 + hash01(island.shapeSeed + i * 13) * 0.03;
+    const geo = new IcosahedronGeometry(r, 0);
+    const pos = geo.getAttribute('position') as Float32BufferAttribute;
+    // squash and jitter the icosahedron so it is not an icosahedron
+    for (let k = 0; k < pos.count; k++) {
+      const f = 0.72 + hash01(island.shapeSeed + i * 17 + k) * 0.6;
+      pos.setXYZ(k, pos.getX(k) * f * 1.25, pos.getY(k) * f * 0.72, pos.getZ(k) * f * 1.15);
+    }
+    geo.computeVertexNormals();
+    const shade2 = 0.82 + hash01(island.shapeSeed + i * 19) * 0.45;
+    const mat = new MeshLambertMaterial({
+      color: new Color(STONE.r * shade2, STONE.g * shade2, STONE.b * shade2),
+      flatShading: true,
+    });
+    const m = new Mesh(geo, mat);
+    m.position.set(sx, sy - r * 0.35, sz);
+    m.rotation.set(hash01(island.shapeSeed + i * 23) * 3.0, hash01(island.shapeSeed + i * 29) * 3.0, 0);
+    stones.push(m);
+  }
+
   const bloom = new Vector4(0, 0, 0, lush ? 99 : -1);
   const material = islandMaterial(bloom);
   const mesh = new Mesh(b.build(true), material);
   const group = new Group();
   group.position.set(island.center.x, island.center.y, island.center.z);
   group.add(mesh);
+  for (const st of stones) group.add(st);
   return { island, group, material, bloom, bloomTarget: lush ? 99 : -1, lush, bloomAge: 0 };
 }
 
