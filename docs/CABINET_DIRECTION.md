@@ -198,6 +198,31 @@ is exactly the kind of thing that only shows up when you look at the picture.)
   off-camera light actually behaves, so the effect survived and the window did
   not.
 
+## The silhouette, and the weather
+
+Two things were still wrong with the specimen itself.
+
+**The coastline was smooth at every scale.** `islandRim` had three harmonics and
+`SEGS` was 30, so the coast was a curve — which is exactly what makes a
+generated shape read as generated. It now carries five harmonics (two of them
+short and small, at the scale of a stride rather than a bay) and is meshed at 46
+segments. More importantly, **the height of the coast now varies around the
+island**: the rim used to sit at one height at every angle, which is why the
+skyline was a flat line seen from the side. Headlands and bays, weighted by
+c⁴ so the middle of the island is untouched.
+
+**The island was a coin.** The crust now overhangs the rock it is made of — the
+cliff band flares out below the turf and the underside pulls in beneath it.
+That, more than any amount of noise on the coastline, is what stops it reading
+as a pancake with a shadow under it.
+
+And one bug that had been sitting there: **rain was falling indoors**, across
+the study, through the glass. Weather in this game belongs to the specimens, not
+to the room they stand in, so the room gets none. Obstacle boxes in mid-air were
+also keeping their six flat faces and reading as green cubes in the case; every
+box is chiselled now, and only the face the seed flies past stays true to the
+collision box.
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

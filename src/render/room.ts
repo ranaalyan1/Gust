@@ -351,7 +351,7 @@ export class Room {
     this.inner.add(bevel);
 
     // the bed the specimen floats over: dark, close-napped, slightly dusty
-    const bedMat = new MeshStandardMaterial({ color: 0x1f1b18, roughness: 1.0, metalness: 0 });
+    const bedMat = new MeshStandardMaterial({ color: 0x171412, roughness: 1.0, metalness: 0 });
     const bed = new Mesh(new CylinderGeometry(CASE_R - 0.014, CASE_R - 0.022, 0.012, 64), bedMat);
     bed.position.y = TABLE_Y + 0.038;
     bed.receiveShadow = true;
@@ -360,43 +360,6 @@ export class Room {
     bedLip.rotation.x = Math.PI / 2;
     bedLip.position.y = TABLE_Y + 0.044;
     this.inner.add(bedLip);
-
-    // the specimen card, propped against the inside of the glass: every case in
-    // every museum has one, and it is always slightly crooked
-    const cardTex = (() => {
-      const c = document.createElement('canvas');
-      c.width = 128;
-      c.height = 80;
-      const g = c.getContext('2d')!;
-      g.fillStyle = '#d9cdaf';
-      g.fillRect(0, 0, 128, 80);
-      g.strokeStyle = 'rgba(60,45,30,0.55)';
-      g.lineWidth = 1;
-      g.strokeRect(5, 5, 118, 70);
-      g.fillStyle = 'rgba(48,36,26,0.9)';
-      g.font = 'italic 15px Georgia, serif';
-      g.fillText('No. 41', 14, 30);
-      g.font = '11px Georgia, serif';
-      g.fillText('Antirrhinum arborescens', 14, 48);
-      g.fillText('coll. 21.iv', 14, 64);
-      return new CanvasTexture(c);
-    })();
-    const card = new Mesh(
-      new PlaneGeometry(0.085, 0.053),
-      new MeshStandardMaterial({ map: cardTex, roughness: 0.95, side: DoubleSide }),
-    );
-    card.position.set(0.30, TABLE_Y + 0.072, -0.335);
-    card.rotation.set(-0.16, -0.42, 0.05);
-    card.castShadow = true;
-    this.inner.add(card);
-
-    // Glass does not pass light cleanly: it scatters a little of it, and that
-    // scatter is the only thing lighting the middle of a specimen case from
-    // inside. This is a cheat for that scatter, held strictly inside the jar so
-    // it can never reach the desk and flatten the lamp's shadow.
-    const glassFill = new PointLight(0xffd2a0, 0.55, 0.30, 1.6);
-    glassFill.position.set(-0.02, TABLE_Y + CASE_H * 0.62, 0.02);
-    this.inner.add(glassFill);
 
     // a scatter of small stones on the bed: no specimen case was ever arranged
     // without loose grit in the bottom of it

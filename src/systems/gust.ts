@@ -973,7 +973,11 @@ export class GustSystem extends createSystem({}) {
       if (this.lightningDelay < 0 && game.sky.storm > 0.4) this.strike(0.9);
     }
     this.clouds.update(this.viewX, time, 0, this.sky.cloud, this.sky.cloudShade, this.sky.fog);
-    const rainLevel = Math.max(0, Math.min(1, game.rain * (1 + this.rainBias)));
+    // The desk is indoors. Rain falling across a study, through the glass of a
+    // bell jar, is the fastest way to break the frame there is. Weather in this
+    // game belongs to the specimens — the wind in the case, the petals on it —
+    // and not to the room they are standing in.
+    const rainLevel = 0;
     const shelters = course.shelters;
     this.rain.update(dt, rainLevel, this.viewX, this.viewY, field.ambient.x * 1.5 - 1.2 * game.sky.storm, field.ambient.z * 1.5, (x, y, z) => {
       for (let i = 0; i < shelters.length; i++) {

@@ -22,8 +22,8 @@ import { type Island, type Obstacle, islandBottom, islandRim, islandTop } from '
 import { hash01 } from '../core/random.js';
 import { FlatBuilder, shade } from './build.js';
 
-const RINGS = 7;
-const SEGS = 30;
+const RINGS = 8;
+const SEGS = 46;
 
 const GRASS = new Color(0x51603a);
 const GRASS_2 = new Color(0x66743f);
@@ -156,13 +156,15 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       c1.lerp(STRATA[0], 0.35);
       if (hash01(island.shapeSeed + s * 53) > 0.72) c1.lerp(CRUST, 0.35);
       const col = c1.clone();
-      const k = 0.94;
-      b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.1, az * k, col);
-      b.tri(bx, top(1, tb), bz, bx * k, bot(1, tb) - 0.1, bz * k, ax * k, bot(1, ta) - 0.1, az * k, col);
+      // The crust overhangs the rock it is made of. That, more than any amount
+      // of noise on the coastline, is what stops an island reading as a coin
+      // with a shadow under it.
+      const k = 1.045;
+      b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.02, az * k, col);
+      b.tri(bx, top(1, tb), bz, bx * k, bot(1, tb) - 0.02, bz * k, ax * k, bot(1, ta) - 0.02, az * k, col);
     }
     // ── underside: craggy rock tapering to a point ──
-    const UNDER = 5;
-    const k = 0.94; // tucked slightly under the cliff band
+    const UNDER = 6;
     // vertex of the underside grid; the crag offset is keyed by the vertex so neighbours share it (no cracks)
     const U = (r: number, seg: number, out: number[]) => {
       const th = ((seg % SEGS) / SEGS) * Math.PI * 2;
@@ -170,9 +172,11 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const depth = r / UNDER;
       const jag = r === 0 || r === UNDER ? 0 : (rnd(seg % SEGS, r, 5) - 0.5) * 0.34 * island.depth * (1 - depth * 0.6);
       const wob = r === 0 || r === UNDER ? 1 : 1 + (rnd(seg % SEGS, r, 9) - 0.5) * 0.3;
-      out[0] = px(c, th) * k * wob;
-      out[1] = bot(c, th) - (r === 0 ? 0.1 : 0) - Math.abs(jag) * 0.6 + jag * 0.4;
-      out[2] = pz(c, th) * k * wob;
+      // the first ring hangs under the lip, then the rock pulls in beneath it
+      const rk = r === 0 ? 1.045 : 0.94 - 0.035 * (r / UNDER);
+      out[0] = px(c, th) * rk * wob;
+      out[1] = bot(c, th) - (r === 0 ? 0.02 : 0) - Math.abs(jag) * 0.6 + jag * 0.4;
+      out[2] = pz(c, th) * rk * wob;
     };
     const A: number[] = [], B: number[] = [], C: number[] = [], D: number[] = [];
     for (let r = 0; r < UNDER; r++) {
@@ -282,7 +286,10 @@ export function buildObstacle(o: Obstacle, key: number): Mesh {
   const box = o.kind === 'box';
   const hx = box ? o.half.x : o.radius, hy = box ? o.half.y : o.radius, hz = box ? o.half.z : o.radius;
   // which way does this rock taper? (walls only get chiselled)
-  const role = !box ? 0 : o.center.y - hy > 1.2 ? 1 : o.center.y < 0 ? -1 : 0;
+  // Every box gets chiselled. A middle-height obstacle used to keep its six
+  // flat faces and read as a green cube sitting in a specimen case; the only
+  // face that stays true to the collision box is the one the seed flies past.
+  const role = !box ? 0 : o.center.y - hy > 1.2 ? 1 : -1;
   const hashAt = (x: number, y: number, z: number, salt: number) =>
     hash01(key * 7 + salt + Math.round(x * 37) * 3 + Math.round(y * 41) * 5 + Math.round(z * 43) * 7);
   for (let i = 0; i < pos.count; i++) {

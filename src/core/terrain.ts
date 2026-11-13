@@ -66,13 +66,30 @@ export function createIsland(init: Partial<Island> & { id: number }): Island {
   };
 }
 
-/** Radius multiplier of the footprint at angle `theta` — a soft, lumpy coastline. */
+/**
+ * Radius multiplier of the footprint at angle `theta`.
+ *
+ * Two long harmonics make the shape — an island is a lump, not a circle — and
+ * two short ones cut the edge. Without the small terms the coast is a smooth
+ * curve at every scale, which is the thing that makes a generated coastline
+ * read as generated: real coasts are ragged at the size of a stride, not just
+ * at the size of a bay.
+ */
 export function islandRim(island: Island, theta: number): number {
   const s = island.shapeSeed;
   const p3 = hash01(s + 1) * 6.283;
   const p5 = hash01(s + 2) * 6.283;
   const p2 = hash01(s + 3) * 6.283;
-  return 1 + 0.1 * Math.sin(3 * theta + p3) + 0.055 * Math.sin(5 * theta + p5) + 0.07 * Math.sin(2 * theta + p2);
+  const p9 = hash01(s + 4) * 6.283;
+  const p13 = hash01(s + 5) * 6.283;
+  return (
+    1 +
+    0.1 * Math.sin(3 * theta + p3) +
+    0.055 * Math.sin(5 * theta + p5) +
+    0.07 * Math.sin(2 * theta + p2) +
+    0.028 * Math.sin(9 * theta + p9) +
+    0.018 * Math.sin(13 * theta + p13)
+  );
 }
 
 /**
@@ -98,8 +115,17 @@ export function islandTop(island: Island, x: number, z: number, coord = islandCo
   const bumps =
     0.55 * Math.sin(1.9 * lx + a) * Math.cos(1.5 * lz + b) + 0.45 * Math.sin(1.1 * (lx - lz) + c);
   const c2 = coord * coord;
+  // The height of the coast itself, all the way around. Without this the rim
+  // sits at exactly one height whatever the angle, and the island's skyline is
+  // a flat line seen from the side — headlands and bays are what give it a
+  // profile. The term is weighted by c⁴ so it only exists at the edge.
+  const th = Math.atan2(lz, lx);
+  const coast =
+    0.055 * Math.sin(2 * th + hash01(s + 21) * 6.283) +
+    0.032 * Math.sin(3 * th + hash01(s + 22) * 6.283) +
+    0.02 * Math.sin(5 * th + hash01(s + 23) * 6.283);
   // hills flatten toward the coast, which then rolls off like a worn cliff edge
-  return island.center.y + island.hills * bumps * (1 - c2) - 0.16 * c2 * c2;
+  return island.center.y + island.hills * bumps * (1 - c2) - 0.16 * c2 * c2 + coast * c2 * c2;
 }
 
 /** Height of the rocky underside at (x, z). */
