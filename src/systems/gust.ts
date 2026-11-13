@@ -977,6 +977,8 @@ export class GustSystem extends createSystem({}) {
     // ── sky, light, weather ──
     this.camera.getWorldPosition(va);
     this.sky.update(game.sky, dt, va.x, va.y, va.z);
+    // the score follows the act, not the timer: the sky is the clock
+    this.audio.setMood(game.sky.storm > 0.45 ? 'storm' : game.sky.golden > 0.55 ? 'golden' : 'dawn');
 
     // ── the room owns the light ──
     // Root space puts simulation x=0 at the root's origin; the case has to sit

@@ -294,6 +294,32 @@ the sentence lands.
 They are written in the same voice as the book — dry, precise, unsentimental.
 "Eleven came home. Write it down. The day, the seeds, the bearing."
 
+## Music under the room
+
+The room had air and a chord, but no **music** — nothing with a shape you could
+remember or come back to. `src/audio/score.ts` is that: a celesta plays a slow
+modal figure over a bowed bass pulse, scheduled against the audio clock rather
+than the frame clock (the animation loop is not a metronome and must never be
+treated as one).
+
+Three modes, one per act, in D:
+
+| Act | Mode | Why |
+| --- | --- | --- |
+| dawn | dorian | minor with a raised sixth — hopeful without smiling |
+| storm | natural minor | and nothing above the ninth: the storm has no high notes |
+| golden | lydian | the raised fourth sounds like light |
+
+The figures are written, not generated, and the rests are most of what makes
+them read as written. Every second phrase lifts an octave; the first beat of
+every other bar carries a quiet third under the melody, so it sounds like a room
+rather than a solo. The reverb is a noise burst with an exponential decay, made
+at start-up: no sample, no licence, no download.
+
+The score follows the **sky**, not the stage number — the sky is the clock — and
+it steps back to a third of itself whenever the Weather Mind speaks, so the
+sentence lands in a hole in the music rather than on top of it.
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

@@ -10,6 +10,7 @@
  */
 
 import { airCutoff, gustSwell, handCutoff, padCutoff, padPan, windPan, worldDuck } from './mix.js';
+import { Score } from './score.js';
 
 export interface AudioFrame {
   /** Peak wind speed the hands are making (m/s). */
@@ -37,6 +38,8 @@ export interface AudioFrame {
 
 const PENTATONIC = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
 const noteHz = (semitones: number, base = 261.63) => base * Math.pow(2, semitones / 12);
+
+export type Mood = 'dawn' | 'storm' | 'golden';
 
 export class GustAudio {
   private ctx: AudioContext | null = null;
@@ -68,6 +71,9 @@ export class GustAudio {
   private voiceSource: AudioBufferSourceNode | null = null;
   private readonly voiceBuffers = new Map<string, AudioBuffer>();
   private readonly voiceLoads = new Map<string, Promise<AudioBuffer | null>>();
+  private music!: GainNode;
+  private score: Score | null = null;
+  private mood: import('./audio.js').Mood = 'dawn';
   private voiceUntil = 0;
   muted = false;
 
@@ -103,6 +109,8 @@ export class GustAudio {
       const t = ctx.currentTime;
       this.worldGain.gain.cancelScheduledValues(t);
       this.worldGain.gain.setTargetAtTime(0.4, t, 0.12);
+      // and the music steps back with it, so the sentence has room
+      this.score?.duck(0.35);
       src.onended = () => {
         if (this.voiceSource === src) this.voiceSource = null;
         try {
@@ -110,6 +118,7 @@ export class GustAudio {
         } catch {
           /* context closed */
         }
+        this.score?.duck(1);
       };
     };
     const ready = this.voiceBuffers.get(id);
@@ -214,6 +223,13 @@ export class GustAudio {
       this.voiceGain.gain.value = 1.5;
       this.voiceGain.connect(this.master);
 
+      // the score sits far back: a room, not a concert hall
+      this.music = ctx.createGain();
+      this.music.gain.value = 1;
+      this.music.connect(this.master);
+      this.score = new Score(ctx, this.music);
+      this.score.start(ctx.currentTime + 0.4);
+
       this.rainGain.connect(this.master);
       this.pulseGain.connect(this.master);
 
@@ -280,9 +296,19 @@ export class GustAudio {
     param.setTargetAtTime(value, this.ctx.currentTime, time);
   }
 
+  /** Which act the sky is in; the score changes mode on the bar. */
+  setMood(mood: import('./audio.js').Mood): void {
+    if (mood === this.mood) return;
+    this.mood = mood;
+    this.score?.setMood(mood);
+  }
+
   update(dt: number, f: AudioFrame): void {
     const ctx = this.ctx;
-    if (!ctx || ctx.state !== 'running') return;
+    if (!ctx) return;
+    // the score keeps time even while the tab is suspended mid-line
+    this.score?.update(ctx.currentTime);
+    if (ctx.state !== 'running') return;
     this.set(this.master.gain, this.muted ? 0 : 0.9, 0.2);
     const e = Math.min(1, f.handEnergy / 9);
     const windX = f.windX ?? 0;
