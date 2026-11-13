@@ -249,7 +249,7 @@ export class DeskMarks {
 
   constructor(private readonly opts: MarksOptions) {
     const { tableY, caseR } = opts;
-    this.paper = new MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.94, metalness: 0, side: DoubleSide });
+    this.paper = new MeshStandardMaterial({ color: 0xa89877, roughness: 0.98, metalness: 0, side: DoubleSide });
 
     // ── the ledger, open where it was left ──
     const book = new Group();
@@ -283,7 +283,8 @@ export class DeskMarks {
         pos.setZ(i, Math.pow(x, 1.7) * 0.028);
       }
       geo.computeVertexNormals();
-      const mat = new MeshStandardMaterial({ map: pageTexture(emptyJournalFor(side), side), roughness: 0.92, metalness: 0, side: DoubleSide });
+      // aged paper, not copy paper: a page under a desk lamp is never white
+      const mat = new MeshStandardMaterial({ map: pageTexture(emptyJournalFor(side), side), color: 0xcbbfa4, roughness: 0.96, metalness: 0, side: DoubleSide });
       const page = new Mesh(geo, mat);
       page.position.set((s * (PAGE_W + 0.012)) / 2, 0.043, 0);
       page.receiveShadow = true;

@@ -233,6 +233,8 @@ export class Room {
   private readonly shiny: MeshStandardMaterial[] = [];
   readonly lamp: SpotLight;
   private readonly bulb: PointLight;
+  /** The bulb mesh, so the lens flare can be attached to a real position. */
+  private bulbMesh!: Mesh;
   private readonly shade: Mesh;
   private readonly glow: Sprite;
   private readonly dust: Points;
@@ -359,6 +361,35 @@ export class Room {
     bedLip.position.y = TABLE_Y + 0.044;
     this.inner.add(bedLip);
 
+    // the specimen card, propped against the inside of the glass: every case in
+    // every museum has one, and it is always slightly crooked
+    const cardTex = (() => {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 80;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#d9cdaf';
+      g.fillRect(0, 0, 128, 80);
+      g.strokeStyle = 'rgba(60,45,30,0.55)';
+      g.lineWidth = 1;
+      g.strokeRect(5, 5, 118, 70);
+      g.fillStyle = 'rgba(48,36,26,0.9)';
+      g.font = 'italic 15px Georgia, serif';
+      g.fillText('No. 41', 14, 30);
+      g.font = '11px Georgia, serif';
+      g.fillText('Antirrhinum arborescens', 14, 48);
+      g.fillText('coll. 21.iv', 14, 64);
+      return new CanvasTexture(c);
+    })();
+    const card = new Mesh(
+      new PlaneGeometry(0.085, 0.053),
+      new MeshStandardMaterial({ map: cardTex, roughness: 0.95, side: DoubleSide }),
+    );
+    card.position.set(0.30, TABLE_Y + 0.072, -0.335);
+    card.rotation.set(-0.16, -0.42, 0.05);
+    card.castShadow = true;
+    this.inner.add(card);
+
     // a scatter of small stones on the bed: no specimen case was ever arranged
     // without loose grit in the bottom of it
     const gritMat = new MeshStandardMaterial({ color: 0x6f665d, roughness: 0.95, flatShading: true });
@@ -372,6 +403,28 @@ export class Room {
       g.receiveShadow = true;
       this.inner.add(g);
     }
+
+    // light does not stop at glass. The lamp comes in from the left, so the
+    // velvet under the specimen carries a bright, soft-edged pool that is
+    // brighter than the rest of the bed and warmer by a stop, and the jar's own
+    // wall cuts a shadow arc across it. Without this the inside of the case is
+    // lit by nothing in particular.
+    const pool = new Mesh(
+      new CircleGeometry(CASE_R - 0.03, 48),
+      new MeshBasicMaterial({
+        map: blobTexture(),
+        color: 0xffce90,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      }),
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.scale.set(1.0, 0.82, 1);
+    pool.position.set(-0.075, TABLE_Y + 0.0455, 0.015);
+    pool.renderOrder = 1;
+    this.inner.add(pool);
 
     // ── the lamp ──
     const lampX = -1.04;
@@ -418,6 +471,7 @@ export class Room {
     // the bulb: a small bright sphere, plus the light itself
     const mouth = new Vector3(0, -0.085, 0).applyEuler(this.shade.rotation);
     const bulbMesh = new Mesh(new SphereGeometry(0.028, 14, 12), new MeshBasicMaterial({ color: 0xffe6b8 }));
+    this.bulbMesh = bulbMesh;
     bulbMesh.position.copy(shadePos).add(mouth);
     this.inner.add(bulbMesh);
 
@@ -702,6 +756,11 @@ export class Room {
     sheet.rotation.set(-Math.PI / 2, 0, 0.5);
     sheet.position.set(TABLE_R - 0.28, TABLE_Y + 0.0035, -0.62);
     this.inner.add(sheet);
+  }
+
+  /** Where the bulb is, in world space, for the lens flare. */
+  bulbWorld(out: Vector3): Vector3 {
+    return this.bulbMesh.getWorldPosition(out);
   }
 
   /**

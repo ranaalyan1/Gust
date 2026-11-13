@@ -130,6 +130,63 @@ desk: their book, their labels, their name in the brass. Frame:
 - **The plaque really takes a name**: the frame above was captured with
   `?keeper=ADA LOVELACE`.
 
+
+## Pass three: the lens
+
+Pass two was rejected, and correctly. The room was built; the *picture* was not.
+A frame made by a renderer and a frame made by a camera differ in ways that have
+nothing to do with the model in the middle.
+
+**`src/render/post.ts`** — a hand-written chain, no composer, no addons:
+
+| stage | what it does |
+| --- | --- |
+| scene target | half float, linear, tone mapping *off* (three disables it for render targets), so the film curve happens exactly once |
+| defocus | half-res blur mixed back through a **tilt-shift band** |
+| halation | quarter-res bright pass, separable blur, added back |
+| composite | defocus · bloom · ACES · colour-negative grade · fringing · vignette · grain · sRGB |
+| flare | veiling glare, an aperture streak and four ghosts, anchored to the bulb's projected position |
+
+The depth-of-field is a tilt-shift, not a depth solve, and that is a deliberate
+choice rather than a shortcut: the subject is a specimen on a desk photographed
+from a chair, which is precisely the thing a tilt-shift lens exists for. It is
+also stable, because the camera is.
+
+**`src/render/glass.ts`** — the bell jar is no longer a `MeshStandardMaterial`
+with a fresnel patched into it, which at this distance is a milk jug. It is
+additive and hand-authored: an edge that only exists at the silhouette, *two*
+highlights a fraction of a degree apart (near face and far face, which is why a
+real jar's highlight looks doubled), green where the glass is thick at the foot,
+and a procedural smudge so the rim is not a mathematical gradient.
+
+**The near field.** The bottom third of the frame used to be empty varnished
+wood, and empty foreground is the loudest tell that a frame was built rather
+than taken. There is now a pencil laid down mid-sentence, five index cards
+squared up by hand and not quite square, a dried coffee ring, a hand lens, and
+grit in the bottom of the case.
+
+**Light.** Ambient dropped to a trace (hemi 0.085, sun 0.035) and every mesh in
+the room now casts into the lamp's shadow map. Nothing was throwing anything
+onto the desk before, which is why the desk read as a flat brown field. A cold
+window on the right splits the palette so the frame is not one orange.
+
+**The tree.** It was a trunk with three icosahedra on it — the most recognisable
+procedural silhouette there is. It is now built the way a tree is built: a trunk
+that forks, forks again, leaves only at the ends, every fork at its own angle
+and with its own share of the parent's length. (The first attempt came out as a
+vertical stack of clumps because the recursion shared its scratch vectors, which
+is exactly the kind of thing that only shows up when you look at the picture.)
+
+![the lens](images/cabinet-the-lens.png)
+
+## What pass three still does not have
+
+- The islands are still pancakes. Now that there is a lens on them, that is the
+  next thing the eye lands on.
+- Nothing is measured on a headset. The post chain is browser-only by design; in
+  XR the renderer draws straight to the framebuffer, which is the correct
+  behaviour and also means the headset sees a plainer frame than this one.
+
 ## Still wrong — the honest list
 
 1. **The glass is still milky.** A fresnel rim plus reflections is most of the

@@ -35,6 +35,7 @@ import {
   ShaderMaterial,
   type PerspectiveCamera,
   Vector2,
+  Vector3,
   type WebGLRenderer,
   WebGLRenderTarget,
 } from '@iwsdk/core';
@@ -108,6 +109,8 @@ const COMPOSITE_FRAG = /* glsl */ `
   uniform float uGrain;
   uniform float uTime;
   uniform float uDebug;
+  uniform vec3 uLamp;   // the bulb, in screen space (uv + whether it is on screen)
+  uniform float uLampOn;
 
   vec3 aces(vec3 x) {
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -184,6 +187,37 @@ const COMPOSITE_FRAG = /* glsl */ `
     float luma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
     colour += g * uGrain * (1.0 - luma * 0.7);
 
+    // A lens does not stay clean with a bare bulb in frame.
+    //
+    // This is not decoration. Every photograph anyone has taken of a desk lamp
+    // at night carries the same three things: a veiling glare that lifts the
+    // whole frame near the source, a horizontal streak off the aperture blades,
+    // and a chain of small ghosts marching along the line through the centre of
+    // the frame. They are what the eye reads as "a camera was here".
+    if (uLampOn > 0.5) {
+      vec2 toLamp = uv - uLamp.xy;
+      float dl = length(toLamp);
+
+      // veiling glare: a very wide, very weak lift
+      colour += vec3(1.0, 0.78, 0.52) * 0.030 / (1.0 + dl * dl * 30.0);
+
+      // the streak: horizontal, narrow, long
+      float streak = exp(-abs(toLamp.y) * 300.0) * exp(-abs(toLamp.x) * 9.0);
+      colour += vec3(1.0, 0.74, 0.46) * streak * 0.10;
+
+      // ghosts, along the line from the bulb through the centre of the frame
+      vec2 axis = vec2(0.5) - uLamp.xy;
+      for (int i = 0; i < 4; i++) {
+        float t = 0.55 + float(i) * 0.42;
+        vec2 g = uLamp.xy + axis * t * 1.35;
+        float r = 0.012 + float(i) * 0.011;
+        float gd = length((uv - g) * vec2(1.0, 1.0));
+        float ring = smoothstep(r, r * 0.55, gd);
+        vec3 tint = i == 1 ? vec3(0.35, 0.62, 0.95) : (i == 2 ? vec3(0.95, 0.55, 0.30) : vec3(1.0, 0.86, 0.66));
+        colour += tint * ring * (0.028 - float(i) * 0.005);
+      }
+    }
+
     gl_FragColor = vec4(encodeSRGB(max(colour, 0.0)), 1.0);
   }
 `;
@@ -224,6 +258,10 @@ export class Post {
   private readonly strength: number;
   private readonly blurPx: number;
   private time = 0;
+  /** The bulb, in world space, and whether there is one to flare. */
+  readonly lampWorld = new Vector3();
+  private readonly lampNdc = new Vector3();
+  lampPresent = false;
   /** 1 = sharp scene, 2 = raw depth, 3 = defocused, 4 = bloom, 5 = view depth. */
   private readonly debug: number;
 
@@ -278,6 +316,8 @@ export class Post {
         uVignette: { value: 0.55 * this.strength },
         uGrain: { value: 0.022 * this.strength },
         uTime: { value: 0 },
+        uLamp: { value: new Vector3(0, 0, 0) },
+        uLampOn: { value: 0 },
         uDebug: { value: 0 },
       },
     });
@@ -333,6 +373,16 @@ export class Post {
 
   /** One full frame, straight to the canvas. */
   render(dt: number, focus: number): void {
+    // project the bulb once, here, so the shader has a screen position to
+    // attach the flare to
+    if (this.lampPresent) {
+      const p = this.lampNdc.copy(this.lampWorld).project(this.camera3);
+      const onScreen = p.z < 1 && Math.abs(p.x) < 1.35 && Math.abs(p.y) < 1.35;
+      this.composite.uniforms.uLamp.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5, 0);
+      this.composite.uniforms.uLampOn.value = onScreen ? 1 : 0;
+    } else {
+      this.composite.uniforms.uLampOn.value = 0;
+    }
     const r = this.renderer;
     this.time += dt;
     this.composite.uniforms.uTime.value = this.time;

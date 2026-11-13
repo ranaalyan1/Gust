@@ -339,6 +339,10 @@ export class GustSystem extends createSystem({}) {
           renderer.getDrawingBufferSize(size);
           this.post?.setSize(size.x, size.y);
           const focus = this.camera.position.distanceTo(this.roomAt);
+          if (this.post) {
+            this.room.bulbWorld(this.post.lampWorld);
+            this.post.lampPresent = true;
+          }
           this.post?.render(dt, Math.max(0.2, focus));
         } else {
           renderer.render(world.scene, world.camera);
