@@ -31,6 +31,19 @@ const DRY = new Color(0x9c8a6a);
 const DRY_2 = new Color(0x84765c);
 const EARTH = new Color(0x5a3d2b);
 const ROCK = new Color(0x6a5f5e);
+/**
+ * Beds. Rock is laid down in courses, and courses are what the eye counts on
+ * the underside of a floating island. Colour only: the silhouette is already
+ * doing the work, and cutting extra ledges into it just made the thing look
+ * like a decorated cake.
+ */
+const STRATA = [
+  new Color(0x7d6852),
+  new Color(0x584a3c),
+  new Color(0x6f5741),
+  new Color(0x453d36),
+  new Color(0x5f5142),
+];
 const ROCK_DEEP = new Color(0x3b3333);
 const STONE = new Color(0x6f6660);
 
@@ -123,6 +136,7 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
     {
       const ax = px(1, ta), az = pz(1, ta), bx = px(1, tb), bz = pz(1, tb);
       shade(c1, EARTH, (rnd(s, 40, 2) - 0.5) * 0.25);
+      c1.lerp(STRATA[0], 0.35);
       const col = c1.clone();
       const k = 0.94;
       b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.1, az * k, col);
@@ -149,8 +163,16 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       U(r, s + 1, B);
       U(r + 1, s, C);
       U(r + 1, s + 1, D);
-      c1.copy(ROCK).lerp(ROCK_DEEP, depth);
-      shade(c1, c1, (rnd(s, r, 3) - 0.5) * 0.3);
+      // each ring lands on a bed boundary, and the boundary is not flat: the
+      // beds dip and rise around the island, which is what makes them read as
+      // strata rather than as banding in a shader
+      const bedF = (depth + (rnd(s, 0, 12) - 0.5) * 0.34) * STRATA.length;
+      const bi = Math.max(0, Math.min(STRATA.length - 1, Math.floor(bedF)));
+      const frac = Math.max(0, Math.min(1, bedF - bi));
+      c1.copy(STRATA[bi]);
+      if (bi < STRATA.length - 1 && frac > 0.72) c1.lerp(STRATA[bi + 1], (frac - 0.72) / 0.28);
+      c1.lerp(ROCK_DEEP, Math.pow(depth, 2.4) * 0.7);
+      shade(c1, c1, (rnd(s, r, 3) - 0.5) * 0.26);
       b.tri(A[0], A[1], A[2], B[0], B[1], B[2], C[0], C[1], C[2], c1.clone());
       if (r < UNDER - 1) {
         shade(c1, c1, (rnd(s, r, 4) - 0.5) * 0.2);

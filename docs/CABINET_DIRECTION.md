@@ -189,16 +189,20 @@ is exactly the kind of thing that only shows up when you look at the picture.)
 
 ## Still wrong — the honest list
 
-1. **The glass is still milky.** A fresnel rim plus reflections is most of the
-   way, but real glass also refracts the world behind it. That needs a
-   transmission pass or a screen-space sample; on Quest it needs measuring first.
-2. **The islands are still pancakes.** They are the specimen and they are the
-   weakest geometry in the frame: no strata, no coast, no scale cues beyond
-   grass. They need a rebuild with rock layers and a ragged shoreline.
-3. **Light has nowhere to fall.** Four dynamic lights is the budget; the room
-   behind the desk is still a black void with shelves floating in it.
-4. **No depth of field.** At 40 cm, everything is sharp, and that is the single
-   biggest reason the frame still reads as a render rather than a photograph.
+1. **The glass does not refract.** It has an edge, two highlights and a green
+   foot, and it reads as glass — but nothing behind it bends. A real refraction
+   needs a transmission pass or a screen-space sample; on Quest it needs
+   measuring first.
+2. **The islands are still pancakes.** The underside now carries beds instead of
+   a gradient, but the skyline is still flat and there are no scale cues beyond
+   grass. They are the specimen and they are the weakest geometry in the frame:
+   they need a rebuilt coastline with an overhang and a ragged edge.
+3. **The room behind the desk is still mostly a void.** The panelling helped;
+   the shelves still float, and there is no window to tell you where the cold
+   light on the right is coming from.
+4. ~~No depth of field.~~ Done in pass three, as a tilt-shift band. It is stable
+   because the camera is; if the camera ever moves, this needs a real depth
+   solve and the n/56-detail of that is written up in `src/render/post.ts`.
 5. **Nothing is pickable.** The loupe lies there. Picking it up and having the
    lens magnify is the next interaction, and the paperwork is what it magnifies.
 6. **On-device frame cost is unmeasured.** Spot shadows, a fresnel shader, a cube
