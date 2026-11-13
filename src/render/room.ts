@@ -186,6 +186,59 @@ function brass(): DataTexture {
   return grainTex;
 }
 
+/**
+ * THE CAUSTIC
+ *
+ * The one optical signature of glass nobody fakes by accident. Light entering a
+ * curved wall is bent, and where the wall is thick — at the foot of a jar — it
+ * comes out concentrated into a bright, broken ring that lands on whatever the
+ * jar is standing on. It is never a clean circle: the light catches the moulding
+ * marks in the glass, so the ring is scalloped, uneven, and brighter on the side
+ * the lamp is on.
+ */
+let causticTex: CanvasTexture | null = null;
+function caustic(): CanvasTexture {
+  if (causticTex) return causticTex;
+  const n = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const g = canvas.getContext('2d')!;
+  const img = g.createImageData(n, n);
+  const c = n / 2;
+  const seedA = 1.7;
+  const seedB = 4.1;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = (x - c) / c;
+      const dy = (y - c) / c;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const th = Math.atan2(dy, dx);
+      // the ring itself, wobbling in and out with angle
+      const wobble = 1 + 0.035 * Math.sin(5 * th + seedA) + 0.022 * Math.sin(11 * th + seedB);
+      const rr = r / wobble;
+      // a caustic is a *line*, not a string of beads: wide enough that the
+      // scallops join up, or it reads as sequins dropped on the desk
+      const ring = Math.exp(-Math.pow((rr - 0.74) / 0.10, 2));
+      // scallops: the moulding marks in the glass, cast as spokes
+      const spoke = 0.74 + 0.26 * Math.sin(19 * th + seedA * 3);
+      // brighter on the lamp side, and it fades before the edge
+      const side = 0.55 + 0.75 * Math.cos(th - 2.6);
+      const fall = Math.max(0, 1 - Math.pow(rr / 1.05, 6));
+      // a thin second ring, the light that went twice round the foot
+      const inner = Math.exp(-Math.pow((rr - 0.46) / 0.06, 2)) * 0.20;
+      const v = Math.max(0, Math.min(1, (ring * spoke * side + inner) * fall));
+      const i = (y * n + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 210;
+      img.data[i + 2] = 150;
+      img.data[i + 3] = v * 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  causticTex = new CanvasTexture(canvas);
+  return causticTex;
+}
+
 /** A dried coffee ring: dark at the lip, almost clear in the middle. */
 let stainTex: CanvasTexture | null = null;
 function ringStain(): CanvasTexture {
@@ -248,6 +301,9 @@ export class Room {
   private bulbMesh!: Mesh;
   private readonly shade: Mesh;
   private readonly glow: Sprite;
+  /** The two caustics: the ring on the desk, and the one on the velvet. */
+  private readonly causticDesk: Mesh;
+  private readonly causticBed: Mesh;
   private readonly dust: Points;
   private readonly dustPos: Float32Array;
   private readonly dustSeeds: Float32Array;
@@ -374,6 +430,31 @@ export class Room {
     const knob = new Mesh(new SphereGeometry(0.038, 20, 14), metal);
     knob.position.y = neck.position.y + 0.036;
     this.inner.add(knob);
+
+    // the ring the glass throws: on the varnish, and again on the velvet
+    const causticMat = new MeshBasicMaterial({
+      map: caustic(),
+      color: 0xffd9a8,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    this.causticDesk = new Mesh(new CircleGeometry(CASE_R + 0.31, 72), causticMat);
+    this.causticDesk.rotation.x = -Math.PI / 2;
+    // the ring is not concentric with the jar: it lands where the light bends
+    // to, which is away from the lamp
+    this.causticDesk.position.set(0.055, TABLE_Y + 0.0032, 0.03);
+    this.causticDesk.renderOrder = 2;
+    this.inner.add(this.causticDesk);
+
+    this.causticBed = new Mesh(
+      new CircleGeometry(CASE_R - 0.055, 64),
+      causticMat.clone(),
+    );
+    this.causticBed.rotation.x = -Math.PI / 2;
+    this.causticBed.position.set(0.045, TABLE_Y + 0.0464, 0.02);
+    this.causticBed.renderOrder = 3;
+    this.inner.add(this.causticBed);
 
     const jarFoot = new Mesh(new TorusGeometry(CASE_R, 0.0085, 8, 80), darkBrass);
     jarFoot.rotation.x = Math.PI / 2;
@@ -870,6 +951,12 @@ export class Room {
     this.bulb.color.copy(c);
     this.bulb.intensity = 0.75 * flicker;
     (this.glow.material as SpriteMaterial).color.copy(c);
+    // the caustic is the lamp, bent: it gutters when the lamp gutters
+    const ck = (0.42 + 0.30 * sky.golden + 0.12 * sky.dawn) * flicker;
+    (this.causticDesk.material as MeshBasicMaterial).opacity = ck * 0.5;
+    (this.causticDesk.material as MeshBasicMaterial).color.copy(c);
+    (this.causticBed.material as MeshBasicMaterial).opacity = ck * 0.62;
+    (this.causticBed.material as MeshBasicMaterial).color.copy(c);
 
     // dust drifts on its own time, and only exists where the light is
     const p = this.dustPos;

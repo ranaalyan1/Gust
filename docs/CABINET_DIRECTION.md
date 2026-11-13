@@ -240,9 +240,20 @@ you see things twice.** The brass collar is drawn again as a pale, inset ghost
 inside the real one, and the foot gets the same treatment fainter. Two additive
 torus draws. It is the difference between a jar and a hoop with a shine on it.
 
-*(The real thing — a refraction pass, or the caustic the jar should be throwing
-onto the desk — is still not here. Neither is worth a full extra scene draw on a
-Quest without measuring the budget first.)*
+**And the jar throws its light.** A caustic is the one optical signature of
+glass that nobody fakes by accident: light bent through a curved wall comes out
+concentrated into a bright, broken ring, and lands on whatever the jar is
+standing on. It is never a clean circle — it catches the moulding marks in the
+glass, so it is scalloped, uneven, and brighter on the side the lamp is on.
+
+It is painted once into a 512px canvas (a wobbling gaussian ring, scalloped at
+nineteen spokes, weighted toward the lamp) and laid flat twice: on the varnish
+just outside the brass, and on the velvet inside the case, where it is the
+brightest thing in the specimen and finally gives the islands something to cast
+into. It gutters with the lamp, because it *is* the lamp.
+
+The first version was a string of beads — a narrow gaussian times a deep sine
+gives you sequins dropped on the desk. A caustic is a line.
 
 ## What pass three still does not have
 
