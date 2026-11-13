@@ -223,6 +223,27 @@ also keeping their six flat faces and reading as green cubes in the case; every
 box is chiselled now, and only the face the seed flies past stays true to the
 collision box.
 
+## The wall holds the shelves, and the glass has a wall
+
+**A shelf that is not held up by anything is a plank in space.** Each shelf now
+has three iron L-brackets and a rail behind them, dark against the panelling,
+and they cast into the lamp's shadow map like everything else. The planks were
+also coming out *bricked* — the desk's grain was turned up to 7.5 repeats and
+every other user of the same texture inherited it, so a 1.5-metre shelf was a
+row of tiles. They have their own long-grain texture now.
+
+**The glass refracts, in the way a photograph of a jar actually does.** True
+screen-space refraction needs a second scene pass or a copy of the frame, and at
+this angle what is behind the jar is a dark wall that would move by one pixel —
+so the honest version of the effect is the one you can see: **through thick glass
+you see things twice.** The brass collar is drawn again as a pale, inset ghost
+inside the real one, and the foot gets the same treatment fainter. Two additive
+torus draws. It is the difference between a jar and a hoop with a shine on it.
+
+*(The real thing — a refraction pass, or the caustic the jar should be throwing
+onto the desk — is still not here. Neither is worth a full extra scene draw on a
+Quest without measuring the budget first.)*
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

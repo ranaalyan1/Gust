@@ -220,6 +220,17 @@ const woodMaterial = (): MeshStandardMaterial =>
   // of the picture into one brown value.
   new MeshStandardMaterial({ map: walnut(), color: 0x4e3a2d, roughness: 0.44, metalness: 0.05 });
 
+/** Long grain for planks: the desk's 7.5 repeats would brick a shelf. */
+let plankTex: DataTexture | null = null;
+const plankWood = (): MeshStandardMaterial => {
+  if (!plankTex) {
+    plankTex = walnut().clone();
+    plankTex.repeat.set(1.1, 4.5);
+    plankTex.needsUpdate = true;
+  }
+  return new MeshStandardMaterial({ map: plankTex, color: 0x4a3a2e, roughness: 0.78, metalness: 0.02 });
+};
+
 const brassMaterial = (): MeshStandardMaterial =>
   new MeshStandardMaterial({ map: brass(), color: 0xffffff, roughness: 0.34, metalness: 0.72 });
 
@@ -311,6 +322,44 @@ export class Room {
     dome.position.y = TABLE_Y + CASE_H + 0.016;
     dome.renderOrder = 4;
     this.inner.add(dome);
+
+    // ── refraction, as far as a still photograph of a jar is concerned ──
+    //
+    // Through thick glass you see everything twice: once direct, once through
+    // the wall. The second image sits inside the first, fainter, and it is the
+    // single cue that says "there is a wall of glass here" — more than any
+    // displacement of what is behind it, which at this angle is a dark wall and
+    // moves by a pixel. So the collar is drawn twice: once in brass, and once
+    // as the pale, inset ghost the front wall throws back.
+    const ghostRim = new Mesh(
+      new TorusGeometry(CASE_R * 0.945, 0.0032, 6, 96),
+      new MeshBasicMaterial({
+        color: 0xdfe9ee,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      }),
+    );
+    ghostRim.rotation.x = Math.PI / 2;
+    ghostRim.position.y = TABLE_Y + CASE_H + 0.019;
+    ghostRim.renderOrder = 5;
+    this.inner.add(ghostRim);
+
+    const ghostFoot = new Mesh(
+      new TorusGeometry(CASE_R * 0.955, 0.0026, 6, 96),
+      new MeshBasicMaterial({
+        color: 0xcfdbe2,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      }),
+    );
+    ghostFoot.rotation.x = Math.PI / 2;
+    ghostFoot.position.y = TABLE_Y + 0.0215;
+    ghostFoot.renderOrder = 5;
+    this.inner.add(ghostFoot);
 
     // the collar
     const collar = new Mesh(new TorusGeometry(CASE_R, 0.0085, 8, 72), metal);
@@ -548,6 +597,7 @@ export class Room {
       metalness: 0.0,
       side: DoubleSide, // seen from the inside
     });
+    const shelfWood = plankWood();
     // A four-walled room, not a painted flat: the first version's wall had a
     // visible edge and the whole thing read as a stage set.
     this.backdrop = new Mesh(new CylinderGeometry(2.8, 2.8, 3.4, 40, 1, true), darkWood);
@@ -563,10 +613,33 @@ export class Room {
     this.inner.add(floor);
 
     const shelfY = [TABLE_Y + 0.46, TABLE_Y + 0.80];
+    // A shelf that is not held up by anything is a plank in space. Two iron
+    // brackets a shelf, and a rail behind them: three boxes per shelf, and the
+    // wall stops being a backdrop.
+    const iron = new MeshStandardMaterial({ color: 0x1b1815, roughness: 0.66, metalness: 0.5 });
     for (const y of shelfY) {
-      const shelf = new Mesh(new BoxGeometry(1.5, 0.022, 0.17), darkWood);
+      const shelf = new Mesh(new BoxGeometry(1.5, 0.022, 0.17), shelfWood);
       shelf.position.set(0.30, y, -1.52);
+      shelf.castShadow = true;
+      shelf.receiveShadow = true;
       this.inner.add(shelf);
+
+      for (const bx of [-0.34, 0.30, 0.94]) {
+        // the upright against the wall
+        const upright = new Mesh(new BoxGeometry(0.014, 0.15, 0.008), iron);
+        upright.position.set(bx, y - 0.075, -1.598);
+        upright.castShadow = true;
+        this.inner.add(upright);
+        // the arm under the plank, and the little strut back to the wall
+        const arm = new Mesh(new BoxGeometry(0.010, 0.009, 0.16), iron);
+        arm.position.set(bx, y - 0.015, -1.515);
+        arm.castShadow = true;
+        this.inner.add(arm);
+      }
+      // the rail the brackets hang from, running the length of the wall
+      const rail = new Mesh(new BoxGeometry(1.5, 0.02, 0.018), iron);
+      rail.position.set(0.30, y - 0.152, -1.596);
+      this.inner.add(rail);
     }
 
     // books: cloth and calf, different heights, one of them read to death. A row
