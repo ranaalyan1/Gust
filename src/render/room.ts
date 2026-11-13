@@ -25,13 +25,16 @@ import {
   BufferGeometry,
   Color,
   ConeGeometry,
+  CircleGeometry,
   CylinderGeometry,
   type CubeTexture,
   DataTexture,
   DoubleSide,
   DynamicDrawUsage,
   Group,
+  IcosahedronGeometry,
   LinearFilter,
+  CanvasTexture,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -53,6 +56,7 @@ import {
 import { hash01 } from '../core/random.js';
 import type { SkyBlend } from '../core/game.js';
 import type { Journal } from '../core/journal.js';
+import { glassMaterial } from './glass.js';
 import { DeskMarks } from './marks.js';
 import { blobTexture } from './blob.js';
 
@@ -108,11 +112,52 @@ function walnut(): DataTexture {
   }
   woodTex = new DataTexture(data, w, h, RGBAFormat);
   woodTex.wrapS = woodTex.wrapT = RepeatWrapping;
-  woodTex.repeat.set(2.2, 2.2);
+  woodTex.repeat.set(7.5, 7.5);
   woodTex.magFilter = LinearFilter;
   woodTex.minFilter = LinearFilter;
   woodTex.needsUpdate = true;
   return woodTex;
+}
+
+/**
+ * The wall behind the desk: vertical boards, tongue and groove, each board a
+ * slightly different piece of the same tree. A flat gradient behind a lit case
+ * reads as a studio backdrop; boards read as a room with a date on it.
+ */
+let wallTex: DataTexture | null = null;
+function panelling(): DataTexture {
+  if (wallTex) return wallTex;
+  const w = 512;
+  const h = 256;
+  const data = new Uint8Array(w * h * 4);
+  const boards = 9;
+  for (let x = 0; x < w; x++) {
+    const bu = (x / w) * boards;
+    const board = Math.floor(bu);
+    const f = bu - board;
+    const tone = 0.72 + hash01(board * 37 + 5) * 0.5;
+    // the seam: a dark groove, one pixel of light on its left shoulder
+    const seam = f < 0.045 ? 0.25 : f < 0.075 ? 1.35 : 1.0;
+    for (let y = 0; y < h; y++) {
+      const v = y / h;
+      // long grain: streaks that run the height of the board, plus a little fine noise
+      const streak = Math.sin(v * 60.0 + hash01(board * 11) * 9.0 + Math.sin(v * 7.0) * 2.0) * 0.5 + 0.5;
+      const fine = hash01(x * 17 + y * 91) * 0.12;
+      const shade = tone * (0.86 + streak * 0.16 + fine) * seam;
+      const i = (y * w + x) * 4;
+      data[i] = Math.min(255, shade * 96);
+      data[i + 1] = Math.min(255, shade * 78);
+      data[i + 2] = Math.min(255, shade * 62);
+      data[i + 3] = 255;
+    }
+  }
+  wallTex = new DataTexture(data, w, h, RGBAFormat);
+  wallTex.wrapS = wallTex.wrapT = RepeatWrapping;
+  wallTex.repeat.set(2.4, 1);
+  wallTex.magFilter = LinearFilter;
+  wallTex.minFilter = LinearFilter;
+  wallTex.needsUpdate = true;
+  return wallTex;
 }
 
 /** Brass: mostly even, with tarnish pooling and faint scratches. */
@@ -141,8 +186,39 @@ function brass(): DataTexture {
   return grainTex;
 }
 
+/** A dried coffee ring: dark at the lip, almost clear in the middle. */
+let stainTex: CanvasTexture | null = null;
+function ringStain(): CanvasTexture {
+  if (stainTex) return stainTex;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const c = size / 2;
+  for (let i = 0; i < 900; i++) {
+    const a = hash01(i * 3 + 1) * Math.PI * 2;
+    const rr = c * (0.62 + hash01(i * 7 + 2) * 0.3);
+    const w = 1.2 + hash01(i * 11) * 3.4;
+    ctx.fillStyle = `rgba(74, 44, 22, ${0.05 + hash01(i * 17) * 0.16})`;
+    ctx.beginPath();
+    ctx.ellipse(c + Math.cos(a) * rr, c + Math.sin(a) * rr, w, w * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'destination-in';
+  const g = ctx.createRadialGradient(c, c, c * 0.55, c, c, c);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  stainTex = new CanvasTexture(canvas);
+  return stainTex;
+}
+
 const woodMaterial = (): MeshStandardMaterial =>
-  new MeshStandardMaterial({ map: walnut(), color: 0x5a4536, roughness: 0.62, metalness: 0.03 });
+  // A waxed desk is glossy, and the gloss is a long, soft reflection of the
+  // bulb. Roughness 0.62 turned the varnish into sandpaper and the whole top
+  // of the picture into one brown value.
+  new MeshStandardMaterial({ map: walnut(), color: 0x4e3a2d, roughness: 0.44, metalness: 0.05 });
 
 const brassMaterial = (): MeshStandardMaterial =>
   new MeshStandardMaterial({ map: brass(), color: 0xffffff, roughness: 0.34, metalness: 0.72 });
@@ -159,7 +235,6 @@ export class Room {
   private readonly bulb: PointLight;
   private readonly shade: Mesh;
   private readonly glow: Sprite;
-  private readonly beam: Mesh;
   private readonly dust: Points;
   private readonly dustPos: Float32Array;
   private readonly dustSeeds: Float32Array;
@@ -203,41 +278,27 @@ export class Room {
     blotterEdge.rotation.y = blotter.rotation.y;
     this.inner.add(blotterEdge);
 
+    // where the bulb ends up, in the room's own frame: the glass needs to know
+    // what it is reflecting before it is built
+    const lampX0 = -1.04;
+    const stemH0 = 0.78;
+    const lampBulbLocal = new Vector3(
+      lampX0 + 0.44 + 0.02 + Math.sin(-0.62) * -0.085,
+      TABLE_Y + stemH0 + 0.16 - 0.055,
+      -0.70 + 0.28 + 0.02,
+    );
+
     // ── the apparatus: the islands live inside brass and glass ──
     // A bell jar, not a cylinder: a wall, a domed top, a knob, and a brass
     // collar where the two meet. The silhouette is what makes it read as a
     // vessel rather than a hoop.
-    const glassMat = new MeshStandardMaterial({
-      color: 0xc2d6de,
-      transparent: true,
-      opacity: 0.03,
-      roughness: 0.02,
-      metalness: 0.0,
-      side: DoubleSide,
-      depthWrite: false,
-    });
-    // Glass is a fresnel object: barely there face-on, a bright rim at the
-    // silhouette. Without that rim a jar is a grey film and the whole case
-    // reads as a hoop standing on a table.
-    glassMat.envMapIntensity = 1.4;
-    glassMat.onBeforeCompile = (shader) => {
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vGlassN;\nvarying vec3 vGlassV;')
-        .replace(
-          '#include <project_vertex>',
-          '#include <project_vertex>\n vGlassN = normalize(mat3(modelMatrix) * normal);\n vGlassV = cameraPosition - (modelMatrix * vec4(position, 1.0)).xyz;',
-        );
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vGlassN;\nvarying vec3 vGlassV;')
-        .replace(
-          '#include <opaque_fragment>',
-          `#include <opaque_fragment>
-          float fres = pow(1.0 - clamp(dot(normalize(vGlassN), normalize(vGlassV)), 0.0, 1.0), 2.6);
-          gl_FragColor.a = clamp(0.018 + fres * 0.55, 0.0, 0.82);
-          gl_FragColor.rgb += vec3(0.5, 0.58, 0.62) * fres * 0.16;`,
-        );
-    };
-    this.shiny.push(glassMat);
+    // A bell jar, not a cylinder: a wall, a domed top, a knob, and a brass
+    // collar where the two meet. The silhouette is what makes it read as a
+    // vessel rather than a hoop. The glass itself is hand-authored — see
+    // glass.ts for why an env-mapped standard material turns into a milk jug.
+    const glassMat = glassMaterial();
+    // the bulb sits at a known point, so the reflection can be exactly there
+    (glassMat.uniforms.uBulb.value as Vector3).set(lampBulbLocal.x, lampBulbLocal.y, lampBulbLocal.z);
     const wall = new Mesh(new CylinderGeometry(CASE_R, CASE_R * 1.005, CASE_H, 64, 1, true), glassMat);
     wall.position.y = TABLE_Y + CASE_H * 0.5 + 0.016;
     wall.renderOrder = 4;
@@ -288,7 +349,7 @@ export class Room {
     this.inner.add(bevel);
 
     // the bed the specimen floats over: dark, close-napped, slightly dusty
-    const bedMat = new MeshStandardMaterial({ color: 0x2c2620, roughness: 0.98, metalness: 0 });
+    const bedMat = new MeshStandardMaterial({ color: 0x1f1b18, roughness: 1.0, metalness: 0 });
     const bed = new Mesh(new CylinderGeometry(CASE_R - 0.014, CASE_R - 0.022, 0.012, 64), bedMat);
     bed.position.y = TABLE_Y + 0.038;
     bed.receiveShadow = true;
@@ -297,6 +358,20 @@ export class Room {
     bedLip.rotation.x = Math.PI / 2;
     bedLip.position.y = TABLE_Y + 0.044;
     this.inner.add(bedLip);
+
+    // a scatter of small stones on the bed: no specimen case was ever arranged
+    // without loose grit in the bottom of it
+    const gritMat = new MeshStandardMaterial({ color: 0x6f665d, roughness: 0.95, flatShading: true });
+    for (let i = 0; i < 22; i++) {
+      const a = hash01(i * 5 + 2) * Math.PI * 2;
+      const rr = 0.15 + hash01(i * 9 + 4) * 0.31;
+      const g = new Mesh(new IcosahedronGeometry(0.006 + hash01(i * 3) * 0.009, 0), gritMat);
+      g.position.set(Math.cos(a) * rr, TABLE_Y + 0.045 + hash01(i * 7) * 0.004, Math.sin(a) * rr);
+      g.rotation.set(hash01(i * 11) * 3.0, hash01(i * 13) * 3.0, hash01(i * 17) * 3.0);
+      g.castShadow = true;
+      g.receiveShadow = true;
+      this.inner.add(g);
+    }
 
     // ── the lamp ──
     const lampX = -1.04;
@@ -374,23 +449,18 @@ export class Room {
     bounce.position.set(0.15, TABLE_Y + 0.62, CASE_R + 0.9);
     this.inner.add(bounce);
 
-    // the visible cone of light: additive, no edges
-    this.beam = new Mesh(
-      new ConeGeometry(0.42, 1.05, 32, 1, true),
-      new MeshBasicMaterial({
-        color: 0xffd9a8,
-        transparent: true,
-        opacity: 0.05,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        side: DoubleSide,
-      }),
-    );
-    // the cone's mouth widens downward: sit it between the bulb and the table
-    this.beam.position.copy(bulbMesh.position).add(new Vector3(0.16, -0.44, 0.09));
-    this.beam.rotation.set(0.12, 0, -0.34);
-    this.beam.renderOrder = 3;
-    this.inner.add(this.beam);
+    // Cold light from a window on the right. Without it every surface in the
+    // room is the same orange and the picture reads as a colour grade rather
+    // than as a place. Warm lamp against cool daylight is the oldest lighting
+    // trick there is, and it is the one this frame was missing.
+    const windowLight = new PointLight(0x8fb4d8, 1.15, 5.0 * ROOM_K, 1.0);
+    windowLight.position.set(1.15, TABLE_Y + 1.15, -1.05);
+    this.inner.add(windowLight);
+    // and a hard, low rim from the same side, to draw a cold line down the
+    // right shoulder of the dome and the brass
+    const rimLight = new PointLight(0xa8c8e8, 1.5, 3.0 * ROOM_K, 1.2);
+    rimLight.position.set(0.95, TABLE_Y + 0.42, -0.55);
+    this.inner.add(rimLight);
 
     // the halo: a radial gradient sprite, which is what a bright point does to
     // a lens. A translucent sphere reads as a bubble.
@@ -443,9 +513,9 @@ export class Room {
 
     // ── the dark behind it: shelves, books, jars ──
     const darkWood = new MeshStandardMaterial({
-      map: walnut(),
-      color: 0x3a322c,
-      roughness: 0.85,
+      map: panelling(),
+      color: 0x7a6f66,
+      roughness: 0.94,
       metalness: 0.0,
       side: DoubleSide, // seen from the inside
     });
@@ -470,23 +540,49 @@ export class Room {
       this.inner.add(shelf);
     }
 
-    // books: different heights and hides, leaning a little
-    for (let i = 0; i < 9; i++) {
-      const h = 0.12 + hash01(i * 17 + 3) * 0.07;
-      const w = 0.022 + hash01(i * 17 + 5) * 0.016;
-      const d = 0.13 + hash01(i * 17 + 7) * 0.04;
+    // books: cloth and calf, different heights, one of them read to death. A row
+    // of identical pale spines is the tell of a scene built from a loop.
+    const hides = [0x4a2a24, 0x2f3a2c, 0x3b3143, 0x5a4326, 0x24303a, 0x6b2f28, 0x3d3527];
+    let bx = 0.02;
+    for (let i = 0; i < 11; i++) {
+      const h = 0.105 + hash01(i * 17 + 3) * 0.075;
+      const w = 0.017 + hash01(i * 17 + 5) * 0.024;
+      const d = 0.125 + hash01(i * 17 + 7) * 0.05;
+      const row = i < 7 ? 0 : 1;
       const book = new Mesh(
         new BoxGeometry(w, h, d),
         new MeshStandardMaterial({
-          color: new Color().setHSL(0.06 + hash01(i * 5) * 0.04, 0.3, 0.1 + hash01(i * 9) * 0.08).getHex(),
-          roughness: 0.9,
+          color: hides[i % hides.length],
+          roughness: 0.72 + hash01(i * 31) * 0.22,
         }),
       );
-      const row = i < 6 ? 0 : 1;
-      book.position.set(0.02 + (i % 6) * 0.038 + (hash01(i * 3) - 0.5) * 0.004, shelfY[row] + 0.008 + h / 2, -1.52);
-      book.rotation.z = (hash01(i * 23) - 0.5) * 0.06;
+      book.position.set(bx + w / 2, shelfY[row] + 0.008 + h / 2, -1.52 + (hash01(i * 3) - 0.5) * 0.02);
+      book.rotation.z = (hash01(i * 23) - 0.5) * 0.1;
       book.castShadow = true;
+      book.receiveShadow = true;
       this.inner.add(book);
+      // gold bands on a couple of them: the only thing on that wall that catches
+      // the lamp
+      if (i === 1 || i === 4) {
+        for (const by of [-h * 0.28, h * 0.24]) {
+          const band = new Mesh(new BoxGeometry(w + 0.0014, 0.004, d * 1.002), metal);
+          band.position.set(book.position.x, book.position.y + by, book.position.z);
+          band.rotation.z = book.rotation.z;
+          this.inner.add(band);
+        }
+      }
+      bx += w + 0.0025 + hash01(i * 41) * 0.006;
+      // one book left lying flat, mid-shelf, where a hand put it down
+      if (i === 6) {
+        for (let k = 0; k < 2; k++) {
+          const flat = new Mesh(new BoxGeometry(0.13 - k * 0.012, 0.022, 0.1), new MeshStandardMaterial({ color: hides[(i + k + 2) % hides.length], roughness: 0.8 }));
+          flat.position.set(bx + 0.09, shelfY[row] + 0.021 + k * 0.023, -1.51);
+          flat.rotation.y = 0.06 + k * 0.03;
+          flat.castShadow = true;
+          flat.receiveShadow = true;
+          this.inner.add(flat);
+        }
+      }
     }
 
     // a couple of specimen jars, glass with brass lids
@@ -495,14 +591,7 @@ export class Room {
       const hh = 0.11 + i * 0.03;
       const jar = new Mesh(
         new CylinderGeometry(r, r * 0.95, hh, 18),
-        new MeshStandardMaterial({
-          color: 0xbcd2cf,
-          transparent: true,
-          opacity: 0.22,
-          roughness: 0.08,
-          metalness: 0,
-          side: DoubleSide,
-        }),
+        glassMaterial({ rim: 0x8fa6ae }),
       );
       jar.position.set(0.58 + i * 0.13, shelfY[1] + 0.011 + hh / 2, -1.48);
       this.inner.add(jar);
@@ -510,6 +599,100 @@ export class Room {
       lid.position.set(jar.position.x, shelfY[1] + 0.011 + hh, -1.48);
       this.inner.add(lid);
     }
+
+    // ── the near edge: what a working desk has on it that a render does not ──
+    //
+    // The bottom of the picture was empty varnished wood, and empty foreground
+    // is the single biggest tell that a frame was built rather than taken.
+    // These sit at the table's near lip, where the lens sees them out of focus.
+
+    // a pencil, chewed, laid down mid-sentence
+    const pencil = new Group();
+    const shaft = new Mesh(new CylinderGeometry(0.0085, 0.0085, 0.42, 6), new MeshStandardMaterial({ color: 0x8a5a1e, roughness: 0.7 }));
+    shaft.rotation.z = Math.PI / 2;
+    pencil.add(shaft);
+    const ferrule = new Mesh(new CylinderGeometry(0.0092, 0.0092, 0.03, 8), metal);
+    ferrule.rotation.z = Math.PI / 2;
+    ferrule.position.x = 0.20;
+    pencil.add(ferrule);
+    const eraser = new Mesh(new CylinderGeometry(0.0083, 0.0083, 0.02, 8), new MeshStandardMaterial({ color: 0xb8735c, roughness: 0.95 }));
+    eraser.rotation.z = Math.PI / 2;
+    eraser.position.x = 0.225;
+    pencil.add(eraser);
+    const tip = new Mesh(new ConeGeometry(0.0085, 0.045, 8), new MeshStandardMaterial({ color: 0x2a2724, roughness: 0.5, metalness: 0.3 }));
+    tip.rotation.z = -Math.PI / 2;
+    tip.position.x = -0.232;
+    pencil.add(tip);
+    pencil.position.set(-0.74, TABLE_Y + 0.0148, 0.66);
+    pencil.rotation.set(0, 0.42, 0.02);
+    this.inner.add(pencil);
+
+    // a stack of index cards, squared up by hand and not quite square
+    const cardMat = new MeshStandardMaterial({ color: 0xd8cead, roughness: 0.96, side: DoubleSide });
+    for (let i = 0; i < 5; i++) {
+      const card = new Mesh(new BoxGeometry(0.115, 0.0022, 0.075), cardMat);
+      card.position.set(
+        -0.60 + (hash01(i * 13) - 0.5) * 0.012,
+        TABLE_Y + 0.0065 + i * 0.0026,
+        0.95 + (hash01(i * 29) - 0.5) * 0.01,
+      );
+      card.rotation.y = -0.5 + (hash01(i * 7) - 0.5) * 0.075;
+      card.castShadow = true;
+      this.inner.add(card);
+    }
+
+    // a cup stood here ten minutes ago
+    const cupRing = new Mesh(
+      new CircleGeometry(0.085, 40),
+      new MeshStandardMaterial({ map: ringStain(), color: 0xffffff, transparent: true, opacity: 0.5, roughness: 1, depthWrite: false }),
+    );
+    cupRing.rotation.x = -Math.PI / 2;
+    cupRing.position.set(0.62, TABLE_Y + 0.0042, 0.72);
+    this.inner.add(cupRing);
+
+    // a hand lens, laid down face up. Three primitives, and the whole desk
+    // becomes somebody's.
+    const lensGroup = new Group();
+    const lensRing = new Mesh(new TorusGeometry(0.062, 0.0075, 10, 36), metal);
+    lensGroup.add(lensRing);
+    const lensGlass = new Mesh(new CircleGeometry(0.06, 36), glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a }));
+    lensGroup.add(lensGlass);
+    const lensGlass2 = new Mesh(new CircleGeometry(0.06, 36), glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a }));
+    lensGlass2.rotation.y = Math.PI;
+    lensGroup.add(lensGlass2);
+    const handle = new Mesh(new CylinderGeometry(0.0085, 0.0075, 0.19, 12), darkBrass);
+    handle.position.set(0, -0.13, 0);
+    lensGroup.add(handle);
+    const collar2 = new Mesh(new CylinderGeometry(0.011, 0.011, 0.018, 12), metal);
+    collar2.position.set(0, -0.068, 0);
+    lensGroup.add(collar2);
+    lensGroup.position.set(-0.63, TABLE_Y + 0.0075, 0.16);
+    lensGroup.rotation.set(-Math.PI / 2 + 0.06, 0.2, 0.9);
+    this.inner.add(lensGroup);
+
+    // Everything casts. A single spot light and twelve shadow casters is not a
+    // photograph; it is a product shot with the shadow switched off. The reason
+    // the desk read as a flat brown field was that nothing in the room was
+    // throwing anything onto it.
+    this.inner.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+      const mat = mesh.material as { transparent?: boolean; blending?: number } | Array<{ transparent?: boolean }>;
+      const m = Array.isArray(mat) ? mat[0] : mat;
+      // additive glass and sprites throw no shadow, and neither does the wall
+      if (m && m.transparent === true) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        return;
+      }
+      if (mesh === this.backdrop) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+        return;
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
 
     // a single sheet left on the desk, half under the pad's edge
     const sheet = new Mesh(
@@ -579,8 +762,6 @@ export class Room {
     this.lamp.intensity = (0.95 + 0.55 * sky.golden + 0.22 * sky.dawn) * flicker;
     this.bulb.color.copy(c);
     this.bulb.intensity = 0.75 * flicker;
-    (this.beam.material as MeshBasicMaterial).color.copy(c);
-    (this.beam.material as MeshBasicMaterial).opacity = 0.032 * flicker + 0.018 * sky.golden;
     (this.glow.material as SpriteMaterial).color.copy(c);
 
     // dust drifts on its own time, and only exists where the light is

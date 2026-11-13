@@ -25,11 +25,11 @@ import { FlatBuilder, shade } from './build.js';
 const RINGS = 7;
 const SEGS = 30;
 
-const GRASS = new Color(0x5d7040);
-const GRASS_2 = new Color(0x74884c);
+const GRASS = new Color(0x51603a);
+const GRASS_2 = new Color(0x66743f);
 const DRY = new Color(0x9c8a6a);
 const DRY_2 = new Color(0x84765c);
-const EARTH = new Color(0x6d4a33);
+const EARTH = new Color(0x5a3d2b);
 const ROCK = new Color(0x6a5f5e);
 const ROCK_DEEP = new Color(0x3b3333);
 const STONE = new Color(0x6f6660);

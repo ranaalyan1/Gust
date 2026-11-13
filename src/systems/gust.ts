@@ -43,6 +43,7 @@ import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
 import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
 import { Room } from '../render/room.js';
+import { Post } from '../render/post.js';
 import {
   JOURNAL_STORAGE_KEY,
   type Journal,
@@ -124,6 +125,7 @@ export class GustSystem extends createSystem({}) {
   private sky!: Sky;
   private room!: Room;
   private journal!: Journal;
+  private post: Post | null = null;
   private readonly roomAt = new Vector3();
   private readonly islandViews = new Map<number, IslandView>();
   private readonly courseProps = new Group();
@@ -312,6 +314,38 @@ export class GustSystem extends createSystem({}) {
       document.body.classList.add('gust-playing');
     }
 
+    // ── the lens ──
+    // In the browser the frame goes through a real focal plane; in a headset it
+    // does not, because an eye can focus for itself. Taking the loop over is a
+    // dozen lines — the SDK's own loop is mirrored here exactly, with the post
+    // pass inserted where `renderer.render` used to be.
+    if (!flag('raw') && typeof window !== 'undefined') {
+      this.post = new Post(renderer, this.scene, this.camera as PerspectiveCamera, { debug: num('postdebug', 0) });
+      const size = new Vector2();
+      const world = this.world;
+      let last = performance.now();
+      let elapsed = 0;
+      renderer.setAnimationLoop(() => {
+        const now = performance.now();
+        let dt = (now - last) / 1000;
+        last = now;
+        if (!(dt > 0)) dt = 1 / 72;
+        if (dt > 0.25) dt = 0.25;
+        elapsed += dt;
+        world.update(dt, elapsed);
+        const frame = renderer.xr.getFrame?.();
+        if (frame) world.runXRFrameCallbacks(frame, dt, elapsed);
+        if (!renderer.xr.isPresenting) {
+          renderer.getDrawingBufferSize(size);
+          this.post?.setSize(size.x, size.y);
+          const focus = this.camera.position.distanceTo(this.roomAt);
+          this.post?.render(dt, Math.max(0.2, focus));
+        } else {
+          renderer.render(world.scene, world.camera);
+        }
+      });
+    }
+
     (window as unknown as { __gust: unknown }).__gust = { game: this.game, system: this };
   }
 
@@ -390,9 +424,16 @@ export class GustSystem extends createSystem({}) {
       // fills the frame and the ledger falls away at the bottom right.
       // The pointer nudges the eye a few millimetres, which is enough parallax
       // for the desk to read as a place with depth.
-      const eyeZ = this.anchor.z + 0.66;
-      cam.position.set(this.anchor.x + 0.03 + px * 0.02, this.anchor.y + 0.135 + py * 0.012, eyeZ);
-      cam.lookAt(this.anchor.x, this.anchor.y + 0.030, this.anchor.z - 0.02);
+      const eyeZ = this.anchor.z + 0.755;
+      cam.position.set(this.anchor.x + 0.05 + px * 0.02, this.anchor.y + 0.168 + py * 0.012, eyeZ);
+      // Off-centre, on purpose. A centred subject is a screenshot; a subject
+      // held in the left third, with the desk's working edge down the right, is
+      // a picture. The eye also looks a hand's width past the glass, at the
+      // shelf behind it, which drops the horizon into the top third.
+      cam.lookAt(this.anchor.x + 0.062, this.anchor.y + 0.034, this.anchor.z - 0.05);
+      // a degree of roll. Nobody holds a camera level, and the eye reads the
+      // lean long before it can name it.
+      cam.rotateZ(0.014);
       void span;
     }
 
@@ -912,12 +953,15 @@ export class GustSystem extends createSystem({}) {
     this.roomAt.set(this.viewX, 0.18, 0);
     this.root.localToWorld(this.roomAt);
     this.room.update(dt, this.roomAt, game.sky, time);
-    // a trace of sky survives at a high window, so faces never go black
-    this.sky.sun.intensity = 0.10;
-    this.sky.hemi.intensity = 0.22;
-    this.sky.fog.color.setRGB(0.055, 0.042, 0.034);
-    this.sky.fog.near = 0.45;
-    this.sky.fog.far = 2.6;
+    // A trace of sky survives at a high window, so faces never go black — but
+    // only a trace. Every tenth of ambient light is a tenth of the lamp's
+    // shadow removed, and the whole picture is the lamp's shadow.
+    this.sky.sun.intensity = 0.035;
+    this.sky.hemi.intensity = 0.085;
+    this.sky.hemi.color.setRGB(0.72, 0.79, 0.95);
+    this.sky.fog.color.setRGB(0.010, 0.0085, 0.0075);
+    this.sky.fog.near = 0.7;
+    this.sky.fog.far = 3.4;
     if (this.lightningDelay >= 0) {
       this.lightningDelay -= dt;
       if (this.lightningDelay < 0 && game.sky.storm > 0.4) this.strike(0.9);
