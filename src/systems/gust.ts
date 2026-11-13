@@ -183,6 +183,9 @@ export class GustSystem extends createSystem({}) {
   private hudState = '';
   private bloomSpeed = 1.5;
   private missionSerial = 0;
+  private spokeEntry = false;
+  private spokeHome = false;
+  private lastSpokenLoss = -99;
   private readonly speed = Math.max(1, Math.min(12, Math.round(num('speed', 1))));
   private time = 0;
 
@@ -300,7 +303,15 @@ export class GustSystem extends createSystem({}) {
 
     // ── input ──
     this.pointer = new PointerInput(renderer.domElement);
-    this.pointer.onFirstGesture = () => this.audio.start();
+    this.pointer.onFirstGesture = () => {
+      this.audio.start();
+      // the room has a voice, and it has been waiting for you to put your
+      // hands on the desk
+      if (!this.spokeEntry) {
+        this.spokeEntry = true;
+        this.audio.say('entry');
+      }
+    };
     this.audio.muted = flag('mute');
     this.cleanupFuncs.push(() => this.pointer.dispose());
     this.buildHud();
@@ -620,6 +631,12 @@ export class GustSystem extends createSystem({}) {
         break;
       case 'lost':
         this.audio.lost(this.pan(e.seed.pos.x));
+        // the line is short and consoling, but nobody wants to hear it twelve
+        // times in a minute
+        if (this.time - this.lastSpokenLoss > 18) {
+          this.lastSpokenLoss = this.time;
+          this.audio.say('lost');
+        }
         break;
       case 'respawn':
       case 'regrow':
@@ -628,6 +645,11 @@ export class GustSystem extends createSystem({}) {
         break;
       case 'planted': {
         const p = e.seed.pos;
+        // the first seed to reach the far island gets a word
+        if (!this.spokeHome && e.island.id === game.course.goal.id) {
+          this.spokeHome = true;
+          this.audio.say('home');
+        }
         this.audio.plant(this.pan(p.x));
         this.burst(p.x, p.y + 0.05, p.z, 22, 2.4, GOLD, 0.075, 1.3);
         for (let k = 0; k < 8; k++) this.petal(p.x, p.y + 0.1, p.z, (Math.random() - 0.5) * 2.5, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * 2.5);
@@ -640,6 +662,7 @@ export class GustSystem extends createSystem({}) {
       }
       case 'stageClear': {
         this.audio.bloom(e.grand);
+        this.audio.say('written');
         this.sunbeam.target = 1;
         const view = this.islandViews.get(e.course.goal.id);
         if (view && !view.lush) {
@@ -845,6 +868,7 @@ export class GustSystem extends createSystem({}) {
     const offline = () => {
       if (serial !== this.missionSerial) return;
       if (game.provideMission(adaptMission(fallbackMission(request.stage, request.run + request.losses), request), 'offline')) {
+        this.audio.say(`s${Math.max(0, Math.min(3, request.stage))}`);
         console.info(`[weather mind] offline — "${game.awaitingMission ? '' : 'hand-written mission'}" for stage ${request.stage}`);
       }
     };
@@ -865,6 +889,7 @@ export class GustSystem extends createSystem({}) {
       if (serial !== this.missionSerial) return;
       const source = body.source === 'gemini' ? 'gemini' : 'fallback';
       if (game.provideMission(mission, source)) {
+        this.audio.say(`s${Math.max(0, Math.min(3, request.stage))}`);
         console.info(`[weather mind] ${source}${body.model ? ` (${body.model})` : ''} — "${mission.name}": ${mission.narrativeBeat}`);
       }
     } catch {

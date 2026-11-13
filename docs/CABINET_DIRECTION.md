@@ -273,6 +273,27 @@ It took three goes, and the two failures are worth recording:
 3. The dust was a per-cell hash, which at this scale is visible cubes. It is two
    sines now.
 
+## The room has a voice
+
+The game had wind, wings, thunder and a chord — and no voice at all. A browser's
+speech synthesis is not a voice; it is a caption read out loud, and it undoes
+everything else in a room that was made by hand. So the Weather Mind is
+**recorded**: ten short lines, kept in `public/voice`, decoded once on demand and
+played above the room on their own gain, with the wind ducking under each one so
+the sentence lands.
+
+| Line | When |
+| --- | --- |
+| `entry` | the first time you put your hands on the desk |
+| `s0`–`s3` | a new mission, by stage — dawn, storm, the crossing, golden hour |
+| `lost` | a seed is lost, at most once every eighteen seconds |
+| `home` | the first seed to reach the far island |
+| `written` | the course closes and the book is written |
+| `hint`, `close` | recorded and wired, not yet triggered |
+
+They are written in the same voice as the book — dry, precise, unsentimental.
+"Eleven came home. Write it down. The day, the seeds, the bearing."
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the

@@ -64,10 +64,79 @@ export class GustAudio {
   private dripTimer = 0;
   private plantStep = 0;
   private lastPlant = 0;
+  private voiceGain!: GainNode;
+  private voiceSource: AudioBufferSourceNode | null = null;
+  private readonly voiceBuffers = new Map<string, AudioBuffer>();
+  private readonly voiceLoads = new Map<string, Promise<AudioBuffer | null>>();
+  private voiceUntil = 0;
   muted = false;
 
   get running(): boolean {
     return this.ctx !== null && this.ctx.state === 'running';
+  }
+
+  /**
+   * Speak a line from the Weather Mind.
+   *
+   * The lines are pre-recorded, because a browser's speech synthesis is not a
+   * voice — it is a caption read out loud, and it undoes every other thing in
+   * this room that was made by hand. They live in public/voice and are decoded
+   * once, on demand.
+   */
+  say(id: string): void {
+    const ctx = this.ctx;
+    if (!ctx || this.muted) return;
+    const base = typeof document !== 'undefined' ? document.baseURI : 'http://localhost/';
+    const play = (buf: AudioBuffer) => {
+      try {
+        this.voiceSource?.stop();
+      } catch {
+        /* already finished */
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this.voiceGain);
+      src.start();
+      this.voiceSource = src;
+      this.voiceUntil = ctx.currentTime + buf.duration;
+      // duck the room: the wind steps back and lets the sentence land
+      const t = ctx.currentTime;
+      this.worldGain.gain.cancelScheduledValues(t);
+      this.worldGain.gain.setTargetAtTime(0.4, t, 0.12);
+      src.onended = () => {
+        if (this.voiceSource === src) this.voiceSource = null;
+        try {
+          this.worldGain.gain.setTargetAtTime(1, ctx.currentTime, 0.6);
+        } catch {
+          /* context closed */
+        }
+      };
+    };
+    const ready = this.voiceBuffers.get(id);
+    if (ready) {
+      play(ready);
+      return;
+    }
+    let load = this.voiceLoads.get(id);
+    if (!load) {
+      load = fetch(new URL(`voice/${id}.mp3`, base).href)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('no line'))))
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => {
+          this.voiceBuffers.set(id, buf);
+          return buf;
+        })
+        .catch(() => null);
+      this.voiceLoads.set(id, load);
+    }
+    void load.then((buf) => {
+      if (buf) play(buf);
+    });
+  }
+
+  /** True while a line is still being spoken. */
+  get speaking(): boolean {
+    return this.ctx !== null && this.ctx.currentTime < this.voiceUntil;
   }
 
   /** Call from a user gesture. Safe to call repeatedly. */
@@ -139,6 +208,12 @@ export class GustAudio {
       } catch {
         this.worldGain.connect(this.master);
       }
+      // the Weather Mind speaks above the room, not inside it: its own gain,
+      // straight to the master, and the wind ducks under it while it talks
+      this.voiceGain = ctx.createGain();
+      this.voiceGain.gain.value = 1.5;
+      this.voiceGain.connect(this.master);
+
       this.rainGain.connect(this.master);
       this.pulseGain.connect(this.master);
 
