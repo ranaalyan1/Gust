@@ -105,19 +105,13 @@ export class GustAudio {
       src.start();
       this.voiceSource = src;
       this.voiceUntil = ctx.currentTime + buf.duration;
-      // duck the room: the wind steps back and lets the sentence land
-      const t = ctx.currentTime;
-      this.worldGain.gain.cancelScheduledValues(t);
-      this.worldGain.gain.setTargetAtTime(0.4, t, 0.12);
-      // and the music steps back with it, so the sentence has room
+      // The wind ducks in `update`, not here: the air bed's gain is recomputed
+      // from the field every frame, so scheduling it once was overwritten by the
+      // next frame and the duck never happened. The score owns its own bus, so
+      // that one can be scheduled directly.
       this.score?.duck(0.35);
       src.onended = () => {
         if (this.voiceSource === src) this.voiceSource = null;
-        try {
-          this.worldGain.gain.setTargetAtTime(1, ctx.currentTime, 0.6);
-        } catch {
-          /* context closed */
-        }
         this.score?.duck(1);
       };
     };
@@ -146,6 +140,12 @@ export class GustAudio {
   /** True while a line is still being spoken. */
   get speaking(): boolean {
     return this.ctx !== null && this.ctx.currentTime < this.voiceUntil;
+  }
+
+  /** Seconds left in the line being spoken (0 when the room is quiet). */
+  get remaining(): number {
+    if (!this.ctx) return 0;
+    return Math.max(0, this.voiceUntil - this.ctx.currentTime);
   }
 
   /** Call from a user gesture. Safe to call repeatedly. */
@@ -296,6 +296,21 @@ export class GustAudio {
     param.setTargetAtTime(value, this.ctx.currentTime, time);
   }
 
+  /**
+   * Taking the headset off or switching tabs: silence the room rather than let
+   * it keep playing to nobody, and resume into the same bar.
+   */
+  setPaused(paused: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    try {
+      if (paused && ctx.state === 'running') void ctx.suspend();
+      else if (!paused && ctx.state === 'suspended') void ctx.resume();
+    } catch {
+      /* a context that cannot be paused is still safe */
+    }
+  }
+
   /** Which act the sky is in; the score changes mode on the bar. */
   setMood(mood: import('./audio.js').Mood): void {
     if (mood === this.mood) return;
@@ -321,7 +336,14 @@ export class GustAudio {
     // the world's own air, ducked while the player is making wind so their own
     // gesture is always the loudest thing in the mix
     const a = Math.min(1, f.ambient / 3.2);
-    this.set(this.worldGain.gain, (0.05 + 0.22 * a + 0.2 * f.storm) * worldDuck(f.handEnergy), 0.4);
+    // ...and it steps back while a line is being spoken, so the sentence lands
+    // in a hole in the air rather than on top of it.
+    const speaking = this.ctx !== null && this.ctx.currentTime < this.voiceUntil;
+    this.set(
+      this.worldGain.gain,
+      (0.05 + 0.22 * a + 0.2 * f.storm) * worldDuck(f.handEnergy) * (speaking ? 0.42 : 1),
+      speaking ? 0.12 : 0.4,
+    );
     this.set(this.worldFilter.frequency, airCutoff(f.ambient, f.storm), 0.4);
     if (this.windPanner) this.set(this.windPanner.pan, windPan(windX, windSpeed), 0.5);
     // the seed's whisper: air moving past it

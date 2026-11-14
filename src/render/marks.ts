@@ -31,7 +31,14 @@ import {
   TorusGeometry,
   Vector3,
 } from '@iwsdk/core';
-import { DEFAULT_KEEPER, EMPTY_INSCRIPTION, type Journal, ledgerLine, sanitizeKeeper } from '../core/journal.js';
+import {
+  DEFAULT_KEEPER,
+  EMPTY_INSCRIPTION,
+  type Journal,
+  ledgerLine,
+  previousKeepersNote,
+  sanitizeKeeper,
+} from '../core/journal.js';
 import { hash01 } from '../core/random.js';
 import { blobTexture } from './blob.js';
 import { InkBuffer, paper, ruled } from './ink.js';
@@ -125,7 +132,7 @@ const PAGE_H = 0.62;
 const PAGE_PX = 640;
 const PAGE_ROW = 62;
 
-function pageTexture(journal: Journal, side: 'left' | 'right'): DataTexture {
+function pageTexture(journal: Journal, side: 'left' | 'right', reveal = 1): DataTexture {
   const w = PAGE_PX;
   const h = Math.round(PAGE_PX * (PAGE_H / PAGE_W));
   const buf = new InkBuffer(w, h, [0.9, 0.86, 0.76]);
@@ -154,8 +161,26 @@ function pageTexture(journal: Journal, side: 'left' | 'right'): DataTexture {
       write(buf, line.date, 42, base, { size: 21, seed: 100 + i * 7, jitter: wet ? 0.75 : 0.6 });
       write(buf, line.count, 182, base, { size: 22, seed: 200 + i * 7, jitter: wet ? 0.75 : 0.6 });
       write(buf, line.wind, 182, base + 30, { size: 18, seed: 300 + i * 7, jitter: 0.65 });
-      if (wet) buf.splat(168, base + 3, 1.8, 0.4);
+      // the newest line arrives wet: it is revealed left to right while the pen
+      // is still on the page, and only pools its blot when the pen is lifted
+      if (wet && reveal < 1) {
+        const cut = 42 + (w - 90) * reveal;
+        for (let y = Math.max(0, base - 30); y < Math.min(h, base + 46); y++) {
+          for (let x = Math.max(0, Math.floor(cut)); x < w; x++) buf.ink[y * w + x] = 0;
+        }
+      }
+      if (wet && reveal >= 1) buf.splat(168, base + 3, 1.8, 0.4);
     });
+  }
+
+  // The previous keeper's line: lower left, smaller, in a slightly worse hand.
+  // Never announced; it is simply there one day, after a run has been finished.
+  if (side === 'left') {
+    const note = previousKeepersNote(journal.entries.length);
+    if (note) {
+      write(buf, note, 46, 624, { size: 17, seed: 1601, jitter: 1.35 });
+      buf.splat(46 + 150, 620, 1.2, 0.22);
+    }
   }
 
   // heading and folio
@@ -441,13 +466,17 @@ export class DeskMarks {
     return g;
   }
 
-  /** Rewrite the book: called when a run completes, and on load. */
-  setJournal(journal: Journal): void {
+  /**
+   * Rewrite the book: called when a run completes, and on load.
+   * `reveal` 0..1 leaves the newest line unwritten past that fraction, which is
+   * how the entry is seen to be written rather than to appear.
+   */
+  setJournal(journal: Journal, reveal = 1): void {
     for (const side of ['left', 'right'] as const) {
       const i = side === 'left' ? 0 : 1;
       const mat = this.pageMats[i];
       mat.map?.dispose();
-      mat.map = pageTexture(journal, side);
+      mat.map = pageTexture(journal, side, reveal);
       mat.needsUpdate = true;
     }
   }

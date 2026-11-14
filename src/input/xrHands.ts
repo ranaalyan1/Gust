@@ -5,6 +5,31 @@
  */
 import { Quaternion, Vector3 } from '@iwsdk/core';
 
+/**
+ * The joints we draw. A hand in the headset has to be drawn: the system does not
+ * composite one into the app's frame, and a player who cannot see their own hands
+ * cannot tell tracking from a broken gesture. This is the full set WebXR exposes,
+ * in the order of XRHand's own joint list.
+ */
+export const HAND_JOINTS: XRHandJoint[] = [
+  'wrist',
+  'thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal', 'thumb-tip',
+  'index-finger-metacarpal', 'index-finger-phalanx-proximal', 'index-finger-phalanx-intermediate', 'index-finger-phalanx-distal', 'index-finger-tip',
+  'middle-finger-metacarpal', 'middle-finger-phalanx-proximal', 'middle-finger-phalanx-intermediate', 'middle-finger-phalanx-distal', 'middle-finger-tip',
+  'ring-finger-metacarpal', 'ring-finger-phalanx-proximal', 'ring-finger-phalanx-intermediate', 'ring-finger-phalanx-distal', 'ring-finger-tip',
+  'pinky-finger-metacarpal', 'pinky-finger-phalanx-proximal', 'pinky-finger-phalanx-intermediate', 'pinky-finger-phalanx-distal', 'pinky-finger-tip',
+];
+
+/** Which joint draws a bone to which: the finger chains, then the palm arch. */
+export const HAND_BONES: [number, number][] = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8], [8, 9],
+  [0, 10], [10, 11], [11, 12], [12, 13], [13, 14],
+  [0, 15], [15, 16], [16, 17], [17, 18], [18, 19],
+  [0, 20], [20, 21], [21, 22], [22, 23], [23, 24],
+  [5, 10], [10, 15], [15, 20],
+];
+
 export interface XRPalm {
   active: boolean;
   /** Palm centre and outward palm normal, in XR reference space. */
@@ -14,6 +39,10 @@ export interface XRPalm {
   isHand: boolean;
   /** The live input source, kept so the shell can fire haptics on it. */
   source?: XRInputSource | null;
+  /** Joint positions in the XR reference space, filled for tracked hands only. */
+  joints?: Vector3[];
+  /** Whether each joint was readable this frame. */
+  jointValid?: boolean[];
 }
 
 const a = new Vector3();
@@ -34,8 +63,39 @@ function jointPos(frame: XRFrame, hand: XRHand, name: JointName, ref: XRReferenc
 }
 
 export class XRHands {
-  readonly left: XRPalm = { active: false, position: new Vector3(), normal: new Vector3(0, 1, 0), isHand: false };
-  readonly right: XRPalm = { active: false, position: new Vector3(), normal: new Vector3(0, 1, 0), isHand: false };
+  readonly left: XRPalm = {
+    active: false,
+    position: new Vector3(),
+    normal: new Vector3(0, 1, 0),
+    isHand: false,
+    joints: HAND_JOINTS.map(() => new Vector3()),
+    jointValid: HAND_JOINTS.map(() => false),
+  };
+  readonly right: XRPalm = {
+    active: false,
+    position: new Vector3(),
+    normal: new Vector3(0, 1, 0),
+    isHand: false,
+    joints: HAND_JOINTS.map(() => new Vector3()),
+    jointValid: HAND_JOINTS.map(() => false),
+  };
+
+  private fillJoints(frame: XRFrame, hand: XRHand, ref: XRReferenceSpace, palm: XRPalm): void {
+    const joints = palm.joints;
+    const valid = palm.jointValid;
+    if (!joints || !valid) return;
+    for (let i = 0; i < HAND_JOINTS.length; i++) {
+      const joint = hand.get(HAND_JOINTS[i]);
+      const pose = joint && frame.getJointPose ? frame.getJointPose(joint, ref) : null;
+      if (pose) {
+        const p = pose.transform.position;
+        joints[i].set(p.x, p.y, p.z);
+        valid[i] = true;
+      } else {
+        valid[i] = false;
+      }
+    }
+  }
 
   /**
    * A short haptic tick. This is how a gesture becomes a *confirmed* gesture:
@@ -87,6 +147,7 @@ export class XRHands {
               palm.position.addScaledVector(palm.normal, 0.02);
               palm.active = true;
               palm.isHand = true;
+              this.fillJoints(frame, hand, ref, palm);
             }
           }
         } else if (src.gripSpace || src.targetRaySpace) {

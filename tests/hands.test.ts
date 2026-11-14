@@ -121,3 +121,26 @@ describe('hand filter', () => {
     expect(dot(f.sample.palmNormal, vec3(Math.cos(199 * 0.05), Math.sin(199 * 0.05), 0))).toBeGreaterThan(0.95);
   });
 });
+
+describe('losing tracking', () => {
+  it('re-acquires without a jump after a reset', () => {
+    const f = new HandFilter();
+    const normal = vec3(0, 1, 0);
+    for (let i = 0; i < 10; i++) f.update(vec3(0.1 * i, 0, 0), normal, 1 / 72);
+    // tracking is lost for two seconds: the shell calls reset() every frame
+    f.reset();
+    f.reset();
+    // the hand comes back a hand's width away
+    const back = f.update(vec3(1.4, 0.2, 0), normal, 1 / 72);
+    expect(Math.hypot(back.velocity.x, back.velocity.y, back.velocity.z)).toBeLessThan(1e-6);
+    expect(back.position.x).toBeCloseTo(1.4);
+  });
+
+  it('a glitch-sized jump is treated as a glitch, not as wind', () => {
+    const f = new HandFilter();
+    const normal = vec3(0, 1, 0);
+    f.update(vec3(0, 0, 0), normal, 1 / 72);
+    const s = f.update(vec3(40, 0, 0), normal, 1 / 72);
+    expect(Math.hypot(s.velocity.x, s.velocity.y, s.velocity.z)).toBeLessThan(f.maxSpeed);
+  });
+});

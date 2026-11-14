@@ -48,7 +48,7 @@ that separates a student low-poly scene from *Moss*.
 | `src/systems/gust.ts` | Renderer configured before first compile; scene dressed once after assembly; wordmark fix; flat-screen vignette. |
 | `iwsdk.config.json` | Camera reframed for the diorama. |
 
-Verified after the pass: `tsc --noEmit` clean, **124/124 tests pass**, production
+Verified after the pass: `tsc --noEmit` clean, **163/163 tests pass**, production
 build succeeds.
 
 ## How the screenshots were made
@@ -111,13 +111,13 @@ running build.
 | --- | --- | --- |
 | **Seed squash & stretch** (`src/render/seeds.ts`) | Released seeds squash for 160 ms, then stretch along their own axis in proportion to speed, with volume preserved (`x = 1/√y`). Derived from the interpolated position history, so the simulation is untouched and the core stays pure. | *Astro Bot*: every object deforms with its velocity. |
 | **Seed ground shadow** | A soft blob projected onto whatever is under the seed via the existing `groundBelow` query, fading with height. It answers "how high am I?" — the question a player asks most in a game about carrying something. | *Half-Life: Alyx*'s object shadows; *Moss*'s positional clarity. |
-| **Palm contact shadow** (`PalmShadow`) | Hands darken the island under them. Height is converted from simulation units to **world metres** before deciding strength, because the world is 1:7 and a naive threshold made the shadow invisible. | Every tabletop game since *Demeo*; real hands in a real room cast one. |
+| **Palm contact shadow** (`PalmShadow`) | Hands darken the island under them. Height is converted from simulation units to **world metres** before deciding strength, because the world is 1:30 and a naive threshold made the shadow invisible. | Every tabletop game since *Demeo*; real hands in a real room cast one. |
 | **Haptic gesture ticks** (`XRHands.pulse`) | A 16 ms pulse the moment a gesture is recognised — both hands for clap/updraft/whirl, one hand for a sweep, scaled by strength. Tracked hands have no actuator, so it degrades to a no-op instead of throwing. | *Beat Saber*'s hit confirmation; *Pistol Whip*'s beat ticks. |
 | **Soft blob texture** (`src/render/blob.ts`) | A shadow is a gradient, not a black disc. Generated as a `DataTexture` — no canvas, no asset file, works headless. | — |
 
 ## What was measured, not assumed
 
-- `tsc --noEmit` clean; **124/124 tests pass**; production build succeeds.
+- `tsc --noEmit` clean; **163/163 tests pass**; production build succeeds.
 - Seed shadow instancing, sampled live during a scripted ghost run:
   `shadowCount` is **0** over open sky and **1** the moment the seed crosses an
   island (t≈3.9 s), staying 1 after planting. The blob is genuinely
@@ -137,7 +137,7 @@ running build.
    with a radial `DataTexture` behaves the same everywhere. The blob module now
    does the latter.
 2. **Units are a design constraint, not a detail.** The first shadow threshold
-   was written in simulation units; because the world is 1:7, a hand 20 cm above
+   was written in simulation units; because the world is 1:30, a hand 20 cm above
    the table is 1.4 units, and the shadow never appeared. Every user-facing
    distance in the renderer now converts to world metres first.
 

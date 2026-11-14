@@ -116,7 +116,8 @@ desk: their book, their labels, their name in the brass. Frame:
 
 ## Verified, and how
 
-- `tsc --noEmit` clean; **156/156 tests**; `GUST_HTTP=1 vite build` succeeds.
+- `tsc --noEmit` clean; **168/168 tests**; `GUST_HTTP=1 vite build` succeeds.
+  (The count is a snapshot: it was 156 when this section was written.)
 - New tests: `tests/pen.test.ts` (10) — ink is laid where the nib goes, ink does
   not double on crossing, the hand is deterministic per seed, small caps stand
   taller than x-height, every letter has a glyph. `tests/journal.test.ts` (14) —
@@ -289,7 +290,8 @@ the sentence lands.
 | `lost` | a seed is lost, at most once every eighteen seconds |
 | `home` | the first seed to reach the far island |
 | `written` | the course closes and the book is written |
-| `hint`, `close` | recorded and wired, not yet triggered |
+| `hint` | the first pair of golden teaching hands, once per page, and only when the room is not already speaking |
+| `close` | the true end: after the ink dries and after the book line has finished |
 
 They are written in the same voice as the book — dry, precise, unsentimental.
 "Eleven came home. Write it down. The day, the seeds, the bearing."
@@ -319,6 +321,36 @@ at start-up: no sample, no licence, no download.
 The score follows the **sky**, not the stage number — the sky is the clock — and
 it steps back to a third of itself whenever the Weather Mind speaks, so the
 sentence lands in a hole in the music rather than on top of it.
+
+## Hands, ink, and the frame guard
+
+Three things learned in the last week, each of which was wrong in a way worth
+recording.
+
+**The headset does not draw your hands.** A comment in the shell claimed it did.
+It does not: an immersive session yields joint poses and never composites hands
+into the application's frame. The bug was invisible on a desktop and obvious the
+first time the game ran in the emulator with hand tracking on, where the only
+thing visible was the emulator's own axis gizmos. `src/render/handView.ts` now
+draws the 25 WebXR joints as soft warm beads with faint bones: two draw calls per
+hand, additive, depth-write off. The palm markers stay hidden in a session — but
+the palm *shadow* is drawn, because a real hand does not cast onto a diorama
+through glass and the shadow is the image.
+
+**The ledger is written, not redrawn.** `written` used to be a sound effect fired
+on every stage clear. Now the newest line arrives left to right over 2.6 s, the
+blot pools only when the pen lifts, and only then does the room speak — the book
+is written, and then the last word.
+
+**Quality degrades the knobs, never the picture.** `src/core/perf.ts` watches a
+rolling average of XR frame times; after two sustained seconds over budget it
+drops a tier, and it never climbs back on its own. A tier may change shadow
+cadence, wind-streak density and foveation — never the shaders and never the
+lamp's shadow of the jar or of the player's hand.
+
+**Brass under one lamp is not chrome.** Roughness 0.34 plus bloom turned every
+ring on the case into a white hoop. Brass wants 0.42 and a broad, slightly broken
+highlight.
 
 ## What pass three still does not have
 
