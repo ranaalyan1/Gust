@@ -260,7 +260,7 @@ export class SeedViews {
       if (groundAt) {
         const gy = groundAt(pos.x, pos.z, pos.y);
         if (Number.isFinite(gy)) {
-          const h = Math.max(0, pos.y - gy) / 7; // world metres (the world is 1:7)
+          const h = Math.max(0, pos.y - gy) / 30; // world metres (the world is 1:30)
           const fade = Math.max(0, 1 - h / 0.32) * Math.min(1, 0.25 + s.glow * 0.35);
           if (fade > 0.01) {
             const r = (flock ? 0.06 : 0.11) * (1 + h * 2.2) * scale * fade;

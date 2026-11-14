@@ -79,7 +79,7 @@ browser". It is engine-agnostic.
 | --- | --- | --- |
 | Hands end-to-end | 5 gestures (open palm, sweep, cupped updraft, clap, whirlwind) drive everything; **but only exercised in the IWSDK headset emulator** (3/3 carries planted) | **Strong design fit, unproven on device** |
 | Playable on Quest 3/3S | WebXR in Quest Browser; never run on a real headset | **Unproven** |
-| Seated, stationary | Tabletop 1:7 diorama, `locomotion: false`, no room-scale | **Excellent fit** |
+| Seated, stationary | Tabletop 1:30 diorama, `locomotion: false`, no room-scale | **Excellent fit** |
 | ≤10 min satisfaction | 4 acts, 3–5 min a run | **Excellent fit** |
 | Fast cold start | 2,515 kB main chunk (697 kB gzip) + 456 kB msdf worker | **Needs measuring on device** |
 | Genre | Casual / narrative, world-building | **Fits Gaming or Entertainment** |

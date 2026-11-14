@@ -63,8 +63,9 @@ import { DeskMarks } from './marks.js';
 import { blobTexture } from './blob.js';
 
 /**
- * The world is a metre wide (two islands seven simulation metres apart at 1:7),
- * so the furniture is sized to *it*: a museum specimen table, not a side table.
+ * The world is a hand's width (two islands seven simulation metres apart at
+ * 1:30, which is 23 cm), so the furniture is sized to *it*: a museum specimen
+ * table, not a side table.
  * Getting this backwards was the first version's main mistake.
  */
 const TABLE_Y = -0.12;

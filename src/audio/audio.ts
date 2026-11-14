@@ -296,6 +296,21 @@ export class GustAudio {
     param.setTargetAtTime(value, this.ctx.currentTime, time);
   }
 
+  /**
+   * Taking the headset off or switching tabs: silence the room rather than let
+   * it keep playing to nobody, and resume into the same bar.
+   */
+  setPaused(paused: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    try {
+      if (paused && ctx.state === 'running') void ctx.suspend();
+      else if (!paused && ctx.state === 'suspended') void ctx.resume();
+    } catch {
+      /* a context that cannot be paused is still safe */
+    }
+  }
+
   /** Which act the sky is in; the score changes mode on the bar. */
   setMood(mood: import('./audio.js').Mood): void {
     if (mood === this.mood) return;

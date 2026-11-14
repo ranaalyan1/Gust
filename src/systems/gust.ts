@@ -68,10 +68,11 @@ import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalCo
 /**
  * Simulation metres per real metre.
  *
- * 1:7 made the world a metre wide — a playset, not a specimen. At 1:18 the same
- * cross-island course is about 39 cm across, which is what fits under a bell
- * jar on a desk. Gesture thresholds scale with this number, so the *physical*
- * feel of a sweep is unchanged: only the size of the world it moves.
+ * 1:7 made the world a metre wide — a playset, not a specimen. At 1:18 it was
+ * still a vitrine; at 1:30 the cross-island course is about 24 cm across, which
+ * is what actually fits under a bell jar on a desk. Gesture thresholds scale
+ * with this number, so the *physical* feel of a sweep is unchanged: only the
+ * size of the world it moves.
  */
 const UNIT = 30;
 const S = 1 / UNIT;
@@ -129,6 +130,7 @@ export class GustSystem extends createSystem({}) {
   private shadowEvery = 1;
   private frameCount = 0;
   private fpsSmoothed = 60;
+  private paused = false;
   private inkEnds = 0;
   private closeAt = 0;
   private spokeHint = false;
@@ -350,6 +352,18 @@ export class GustSystem extends createSystem({}) {
       }
     };
     this.audio.muted = flag('mute');
+    // A headset taken off, or a tab switched away from, pauses the room: no
+    // audio to an empty seat, and no sim running behind the glass that the
+    // player comes back to mid-flight.
+    if (typeof document !== 'undefined') {
+      const onVisibility = () => {
+        this.paused = document.hidden;
+        this.audio.setPaused(this.paused);
+        this.frames.reset();
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      this.cleanupFuncs.push(() => document.removeEventListener('visibilitychange', onVisibility));
+    }
     this.cleanupFuncs.push(() => this.pointer.dispose());
     this.buildHud();
 
@@ -435,7 +449,7 @@ export class GustSystem extends createSystem({}) {
           (this.overlay.active ? '' : ' (add ?perf=1 for live numbers)'),
       );
     }
-    if (dt > 0) this.fpsSmoothed += (1 / dt - this.fpsSmoothed) * 0.08;
+    if (dt > 0 && !this.paused) this.fpsSmoothed += (1 / dt - this.fpsSmoothed) * 0.08;
     // The frame monitor is a headset instrument: on a desk the picture is worth
     // more than the frame, and there is no fixed refresh to miss.
     if (this.renderer.xr.isPresenting) {
@@ -637,6 +651,7 @@ export class GustSystem extends createSystem({}) {
   }
 
   private readonly step = (dt: number): void => {
+    if (this.paused) return;
     const game = this.game;
     if (this.autoplay) {
       this.ghost.update(game, dt);

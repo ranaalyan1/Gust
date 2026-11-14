@@ -1,16 +1,24 @@
-# GUST
+# GUST — The Wind Cabinet
 
-Your hands are the wind. Carry a dandelion seed across a living sky.
+**You don't move the seed. You move the air.**
 
-GUST is a small WebXR game built on the Immersive Web SDK. A miniature world of
-floating islands sits in front of you; a single glowing seed waits on a
-dandelion. Sweep a hand past it and it lifts. Cup your hands beneath it and it
-rides the air above your palms. Get it to the barren island and the island
-blooms. Four short acts, about three to five minutes a run, and every run
-plants something permanent in your home garden.
+A bell jar on a walnut desk, one lamp, and a landscape 1:30 its real size: two
+islands, a dandelion, a seed that has been waiting for weather. Your hands are
+the weather. Sweep a palm past the seed and it lifts; cup both hands under it and
+it rides the air; clap and the shockwave moves everything in the room, dust
+included. Four acts, three to five minutes, hands only.
 
-It plays in a headset with hand tracking or controllers, and in any ordinary
-browser with a mouse or a finger.
+It runs in a headset (hand tracking or controllers) and in any ordinary browser
+with a mouse or a finger. There is no menu and no tutorial text in the headset:
+the world speaks, and when a player hesitates a pair of golden ghost hands shows
+the next move.
+
+- **Hosted:** _add the deployed URL here_
+- **Video:** _add the Devpost video URL here_
+- **Engine:** the Immersive Web SDK (`@iwsdk/core`) over three.js, TypeScript
+- **Scale:** the diorama is `UNIT = 30` simulation metres per real metre
+- **Assets:** no texture or model files. Every surface, every sound and every
+  line of music is made in code, except the ten recorded voice lines.
 
 ## Playing
 
@@ -22,108 +30,104 @@ browser with a mouse or a finger.
 | Clap | clap | right-click or Space | a shockwave |
 | Stir | circle a hand | draw circles | a whirlwind that gathers seeds |
 
-To land the seed, take the jet away: open your hands wide apart (more than
-about 75 cm) or turn the palms over; on desktop, let go of the button. Controllers held level count as palms up, so with controllers you let
-go by spreading or rolling them.
-
-There is no menu and no tutorial text in the headset: if you hesitate, a pair of
-golden ghost hands shows the next move. On desktop a single line of hint text
-appears instead.
+To land the seed, take the jet away: open your hands wide apart (more than about
+75 cm) or turn the palms over; on desktop, let go of the button. Controllers held
+level count as palms up, so with controllers you let go by spreading or rolling
+them.
 
 The four acts: **First Breath** (dawn, one seed, one gap), **The Storm Gate**
-(rain, and a stone gate that exhales on a rhythm), **The Long Crossing** (the
-storm breaks as you advance and thermals light up like stepping stones) and
-**Dandelion Burst** (golden hour, a whole flock; bring 40% home).
+(a stone gate that exhales on a rhythm, and a seed you can lose), **The Long
+Crossing** (thermals light up like stepping stones) and **Dandelion Burst**
+(golden hour, a whole flock; bring 40% home). At the end, the keeper's ledger
+writes the run in front of you, in ink.
 
 ### URL flags
 
-`?ghost=1` lets the scripted ghost play (a good first look). `?stage=0..3`
-starts at an act. `?mute=1` silences audio. `?offline=1` never calls the
-mission API. `?reset=1` clears the saved garden. `?quality=0.5` is a lighter
-mode. `?flock=N`, `?seed=N` and `?speed=N` are for testing.
+`?ghost=1` lets the scripted ghost play (a good first look). `?stage=0..3` starts
+at an act. `?mute=1` silences audio. `?offline=1` never calls the mission API.
+`?reset=1` clears the saved garden and the book. `?quality=0.5` is a lighter
+mode. `?perf=1` shows fps, frame ms, draw calls and triangles; `?diag=1` adds the
+act, the quality tier, hand status and the time to the first pluck. `?flock=N`,
+`?seed=N`, `?speed=N`, `?keeper=NAME` and `?raw=1` (no post chain) are for
+testing and captures.
 
 ## The Weather Mind
 
 Two layers decide what the sky does.
 
-1. **A realtime director** (`src/core/weatherMind.ts`) runs every physics step
-   in the browser. It watches progress, stalls and losses, and leans on the
-   weather: a struggling player gets a tailwind and a relief thermal, a player
-   who is cruising gets a little more menace.
+1. **A realtime director** (`src/core/weatherMind.ts`) runs every physics step in
+   the browser. It watches progress, stalls and losses and leans on the weather:
+   a struggling player gets a tailwind and a relief thermal, a player who is
+   cruising gets a little more menace.
 2. **A mission writer** (`api/mission.ts`, `src/server/weatherMind.ts`). Between
    acts the client posts how the last act went to `/api/mission`. If
    `GEMINI_API_KEY` is set, Gemini answers with a structured mission (sky mood,
    wind, turbulence, hazards, cues such as birds, lightning and sunbeams). The
    answer is validated and clamped before the game will use it. With no key, a
    slow answer or a bad answer, a hand-written mission bank is used and the game
-   carries on; the endpoint always returns `200` with a valid mission and says
+   carries on: the endpoint always returns `200` with a valid mission and says
    which source it came from.
 
-The key is read only on the server. It has no `VITE_` prefix and is never in
-the client bundle.
+AI never touches per-frame gameplay, and the game is complete offline.
+
+## The room has a voice
+
+Ten recorded lines, played from `public/voice` above the room on their own gain,
+with the wind and the score ducking under each one. The entry line arrives the
+first time a player's hand is tracked in a session. One line per act. A
+consolation when a seed is lost, at most once every eighteen seconds. A word for
+the first seed home. At the end the ledger writes itself and *then* the room
+speaks — the book is written, and the last word.
+
+The music is a celesta figure over a bowed bass, in three modes (dorian for dawn,
+natural minor for the storm, lydian for golden hour), scheduled against the audio
+clock and following the sky. The reverb is generated at start-up; there is no
+sample to load.
 
 ## Running it
 
-Requires Node 22.12 or newer.
-
 ```bash
-npm install
-npx vite            # https://localhost:8081 (self-signed, which WebXR needs)
+npm ci
+npm test           # core + systems tests
+npx tsc --noEmit
+npm run build
+npm run ghost      # a scripted headless run, no browser
+npm run dev        # IWSDK dev server with the IWER emulator
 ```
 
-`GUST_HTTP=1 npx vite` serves plain HTTP instead, for hosted previews that
-terminate TLS themselves. The dev server also serves `/api/mission`; copy
-`.env.example` to `.env.local` and add a key to hear from Gemini locally.
+`GEMINI_API_KEY` (no `VITE_` prefix) and optionally `GEMINI_MODEL` go in
+`.env.local` or the Vercel project's environment variables. Without them,
+`/api/mission` still answers `200` from the offline bank.
 
-In development the IWSDK emulator is injected, so the **Enter XR** button works
-on a desktop browser with an emulated Quest 3.
+Deploying: `vercel.json` builds with Vite and serves `api/mission.ts` as a
+function. Any static host plus a single serverless function will do; the client
+treats a missing endpoint as "use the offline bank".
 
-```bash
-npm test            # 124 unit tests of the headless game core
-npm run ghost       # the scripted ghost plays a whole run in the terminal
-npm run typecheck
-npm run build       # production build in dist/
-```
-
-## Deploying to Vercel
-
-`vercel.json` is set up: Vite builds to `dist/` and `api/mission.ts` becomes a
-serverless function.
-
-1. Import the repository in Vercel, or run `npx vercel deploy --prod`.
-2. Optional: add `GEMINI_API_KEY` under Project Settings, Environment Variables.
-3. Open `https://<project>.vercel.app/api/mission?stage=1`. `"source":"gemini"`
-   means the model answered; `"source":"fallback"` comes with a `reason`.
-
-## How it is put together
+## What is where
 
 ```
-src/core/      the whole game, headless and deterministic: wind field, seed
-               flight, hand verbs, courses, missions, director, garden, ghost
-src/render/    low-poly world drawn from that state (sky, islands, foliage,
-               seeds, air, light)
-src/input/     mouse/touch and WebXR hands or controllers, both reduced to the
-               same thing: two palm poses
-src/audio/     fully synthesised sound, no audio files
-src/systems/   the one IWSDK system that wires it together
-src/server/    mission resolver shared by the Vercel function and the dev server
-api/           the Vercel function
-tests/         unit tests for the core and the resolver
-scripts/       headless ghost play-through
+src/core/      pure, headless game: wind, seed, gestures, courses, weather,
+               journal, the frame guard. Runs unchanged in Node (see tests/).
+src/systems/   the shell: WebXR input, the camera, the room, sound, missions.
+src/render/    the cabinet: glass, brass, marks, ink, the lens and its post chain.
+src/audio/     procedural room tone, the score, and the recorded voice.
+api/           the one serverless function.
+docs/          direction, art direction, rules, judge and device scripts, video.
+public/voice/  ten recorded lines.
 ```
 
-Everything the player touches is one physical model. A hand, a mouse, a
-controller and the ghost all produce palm poses; palm poses become wind
-sources; the seed is a point mass with drag in that wind. There are no
-scripted trajectories.
+## Documents
 
-The world is drawn at 1:7 and placed within arm's reach. There are no texture
-or model files: every island, plant and sound is generated at load.
+- [`docs/CABINET_DIRECTION.md`](docs/CABINET_DIRECTION.md) — what this is and why
+- [`docs/ART_DIRECTION.md`](docs/ART_DIRECTION.md) — the materials, and the failures
+- [`docs/JUDGE_FIRST_MINUTE.md`](docs/JUDGE_FIRST_MINUTE.md) — a stopwatch checklist
+- [`docs/DEVICE_TEST_SCRIPT.md`](docs/DEVICE_TEST_SCRIPT.md) — 20 minutes on a Quest
+- [`docs/VIDEO_STORYBOARD.md`](docs/VIDEO_STORYBOARD.md) — the video, shot by shot
+- [`docs/DEVPOST_SUBMISSION.md`](docs/DEVPOST_SUBMISSION.md) — the submission text
+- [`docs/COMPETITION_2026.md`](docs/COMPETITION_2026.md) — the rules and the clock
 
-## Project documents
+## Licence and privacy
 
-| Document | What it covers |
-| --- | --- |
-| `docs/COMPETITION_2026.md` | Meta VR Start Developer Competition 2026 rules, deadline, and GUST's position against every requirement |
-| `docs/NATIVE_QUEST_PLAN.md` | The WebXR-to-native port: route comparison, module-by-module mapping, delivery gates |
-| `unity/` | Unity 6 project skeleton for the native port (not yet playable) |
+MIT — see [`LICENSE`](LICENSE). Third-party code and its licences are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). What the game sends anywhere,
+and what it does not, is in [`PRIVACY.md`](PRIVACY.md).
