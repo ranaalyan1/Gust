@@ -18,6 +18,7 @@ import {
   entryFor,
   ledgerLine,
   parseJournal,
+  previousKeepersNote,
   sanitizeKeeper,
   serializeJournal,
   today,
@@ -139,5 +140,26 @@ describe('storage', () => {
 
   it('keeps the inscription plain, because it is written by hand', () => {
     expect(EMPTY_INSCRIPTION).not.toMatch(/[!]/);
+  });
+});
+
+describe("the previous keeper's line", () => {
+  it('is not there before a run has been completed', () => {
+    expect(previousKeepersNote(0)).toBeNull();
+    expect(previousKeepersNote(-2)).toBeNull();
+    expect(previousKeepersNote(Number.NaN)).toBeNull();
+  });
+
+  it('appears after the first completed run, and stays', () => {
+    const line = previousKeepersNote(1);
+    expect(line).toBeTruthy();
+    expect(line!.split(' ').length).toBeLessThanOrEqual(12);
+    expect(previousKeepersNote(9)).toBe(line);
+  });
+
+  it('is written in lower case, without a full stop: a hand, not a heading', () => {
+    const line = previousKeepersNote(1)!;
+    expect(line).toBe(line.toLowerCase());
+    expect(line.endsWith('.')).toBe(false);
   });
 });

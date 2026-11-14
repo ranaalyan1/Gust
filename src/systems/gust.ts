@@ -131,6 +131,8 @@ export class GustSystem extends createSystem({}) {
   private frameCount = 0;
   private fpsSmoothed = 60;
   private paused = false;
+  /** 0..1 over the first ~2.8 s: the room comes up out of black. */
+  private intro = 0;
   private inkEnds = 0;
   private closeAt = 0;
   private spokeHint = false;
@@ -1156,6 +1158,11 @@ export class GustSystem extends createSystem({}) {
     // over the middle of the course instead, so map the view centre out.
     this.roomAt.set(this.viewX, 0.18, 0);
     this.root.localToWorld(this.roomAt);
+    // The first ten seconds start in the dark. A lamp coming up is the cheapest
+    // fade in the world and the only one that suits a room with one light bulb.
+    this.intro = Math.min(1, this.intro + dt / 2.8);
+    const e = this.intro * this.intro * (3 - 2 * this.intro);
+    this.renderer.toneMappingExposure = 0.04 + (1.18 - 0.04) * e;
     this.room.update(dt, this.roomAt, game.sky, time);
     // A trace of sky survives at a high window, so faces never go black — but
     // only a trace. Every tenth of ambient light is a tenth of the lamp's
@@ -1237,6 +1244,29 @@ export class GustSystem extends createSystem({}) {
         );
       } else {
         shadow.place(0, 0, 0, 1, 0);
+      }
+
+      // W1 — the palm's own air. Wind streaks live in the simulation and the
+      // dust in the room is the room's; neither is *at* the hand. A palm moving
+      // fast enough lifts a few motes right where it passes, which is the only
+      // cue that says "this is happening here" rather than "over there".
+      if (h && h.velocity) {
+        const speed = Math.sqrt(h.velocity.x ** 2 + h.velocity.y ** 2 + h.velocity.z ** 2);
+        if (speed > 2.2 && Math.random() < Math.min(0.9, dt * 26)) {
+          const n = speed > 6 ? 3 : 1;
+          for (let k = 0; k < n; k++) {
+            this.sparks.emit(
+              h.position.x + (Math.random() - 0.5) * 0.35,
+              h.position.y + (Math.random() - 0.5) * 0.25,
+              h.position.z + (Math.random() - 0.5) * 0.35,
+              -h.velocity.x * 0.12 + (Math.random() - 0.5) * 0.5,
+              -h.velocity.y * 0.12 + 0.35 + Math.random() * 0.4,
+              -h.velocity.z * 0.12 + (Math.random() - 0.5) * 0.5,
+              WARM,
+              { life: 0.55 + Math.random() * 0.5, size: 0.028, drag: 1.1, gravity: 0.25, windFollow: 0.8, twinkle: 0.5 },
+            );
+          }
+        }
       }
 
       const sp = this.spawn.hands[i];
@@ -1379,7 +1409,11 @@ export class GustSystem extends createSystem({}) {
     if (!this.autoplay) {
       if (game.phase === 'awaiting') {
         this.idle = making ? Math.max(0, this.idle - dt * 2) : this.idle + dt;
-        want = this.idle > (this.everPlucked ? 9 : active ? 6 : 3.5);
+        // 3.5 s of stillness is the invitation; after a run, be slower to nag.
+        // (`active` used to gate this at 6 s, which in a headset delayed the
+        // one thing that teaches the gesture.)
+        want = this.idle > (this.everPlucked ? 9 : 3.5);
+        void active;
       } else if (game.phase === 'flight' && game.course.seedCount === 1) {
         // lost seeds without ever finding the updraft: show the cupped hands under the seed
         want = game.mind.losses >= 1 && !this.usedUpdraft && game.lead !== null;

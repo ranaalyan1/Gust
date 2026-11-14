@@ -31,7 +31,14 @@ import {
   TorusGeometry,
   Vector3,
 } from '@iwsdk/core';
-import { DEFAULT_KEEPER, EMPTY_INSCRIPTION, type Journal, ledgerLine, sanitizeKeeper } from '../core/journal.js';
+import {
+  DEFAULT_KEEPER,
+  EMPTY_INSCRIPTION,
+  type Journal,
+  ledgerLine,
+  previousKeepersNote,
+  sanitizeKeeper,
+} from '../core/journal.js';
 import { hash01 } from '../core/random.js';
 import { blobTexture } from './blob.js';
 import { InkBuffer, paper, ruled } from './ink.js';
@@ -164,6 +171,16 @@ function pageTexture(journal: Journal, side: 'left' | 'right', reveal = 1): Data
       }
       if (wet && reveal >= 1) buf.splat(168, base + 3, 1.8, 0.4);
     });
+  }
+
+  // The previous keeper's line: lower left, smaller, in a slightly worse hand.
+  // Never announced; it is simply there one day, after a run has been finished.
+  if (side === 'left') {
+    const note = previousKeepersNote(journal.entries.length);
+    if (note) {
+      write(buf, note, 46, 624, { size: 17, seed: 1601, jitter: 1.35 });
+      buf.splat(46 + 150, 620, 1.2, 0.22);
+    }
   }
 
   // heading and folio

@@ -171,6 +171,24 @@ export function serializeJournal(journal: Journal): string {
 }
 
 /** One line of the book, as it will be written. */
+/**
+ * THE HIDDEN LINE.
+ *
+ * After a player's first completed run, a line appears in the book in a hand
+ * that is not the keeper's. It is never explained, never announced, and never
+ * mentioned in the game's text: it is the thing players are meant to tell each
+ * other about. Twelve words or fewer, dry, and true of the game's own physics —
+ * a seed that has been up in a strong gust will not lift again until the air
+ * settles.
+ *
+ * Returns null until a run has actually been completed, so a first visitor sees
+ * a clean page.
+ */
+export function previousKeepersNote(runs: number): string | null {
+  if (!Number.isFinite(runs) || runs < 1) return null;
+  return 'the dandelion keeps its seed till the third gust';
+}
+
 export interface LedgerLine {
   date: string;
   count: string;
