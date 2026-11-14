@@ -935,8 +935,29 @@ export class Room {
     this.inner.add(mesh);
   }
 
+  /** The entry being written right now, if any. */
+  private ink: { journal: Journal; t: number; step: number } | null = null;
+  /** True while a line is still being written. */
+  get writing(): boolean {
+    return this.ink !== null;
+  }
+  /** Seconds the pen takes on a fresh entry. */
+  static readonly INK_SECONDS = 2.6;
+
+  /**
+   * Write the newest line in front of the reader: the pen moves left to right
+   * over two and a half seconds, the blot pools only when it is lifted. The
+   * ledger is rewritten in steps rather than every frame — twelve redraws of two
+   * 640-pixel pages, not a hundred and fifty.
+   */
+  writeJournal(journal: Journal): void {
+    this.ink = { journal, t: 0, step: 0 };
+    this.marks.setJournal(journal, 0.02);
+  }
+
   /** Rewrite the ledger. */
   setJournal(journal: Journal): void {
+    this.ink = null;
     this.marks.setJournal(journal);
   }
 
@@ -951,6 +972,21 @@ export class Room {
    */
   update(dt: number, origin: Vector3, sky: SkyBlend, time: number): void {
     this.group.position.copy(origin);
+
+    // the pen: steps of ~0.22 s, so the eye reads writing rather than frames
+    if (this.ink) {
+      this.ink.t += dt;
+      const steps = 12;
+      const step = Math.min(steps, Math.floor((this.ink.t / Room.INK_SECONDS) * steps));
+      if (step > this.ink.step) {
+        this.ink.step = step;
+        this.marks.setJournal(this.ink.journal, step / steps);
+      }
+      if (this.ink.t >= Room.INK_SECONDS) {
+        this.marks.setJournal(this.ink.journal, 1);
+        this.ink = null;
+      }
+    }
 
     // The three "skies" become three qualities of lamplight, because in a room
     // there is no sky: dawn is low and warm, the storm is cold and guttering,

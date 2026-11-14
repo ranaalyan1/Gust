@@ -41,12 +41,13 @@ import {
 import { Overlay, diagMode, markOnce, marks } from '../boot/diag.js';
 import { disarmStartupGuard } from '../boot/guard.js';
 import { PointerInput } from '../input/pointer.js';
-import { XRHands } from '../input/xrHands.js';
+import { HAND_BONES, HAND_JOINTS, XRHands } from '../input/xrHands.js';
 import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
 import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
 import { Room } from '../render/room.js';
 import { Post } from '../render/post.js';
+import { HandView } from '../render/handView.js';
 import {
   JOURNAL_STORAGE_KEY,
   type Journal,
@@ -111,6 +112,16 @@ export class GustSystem extends createSystem({}) {
   private readonly pointerHands = new PointerHands();
   private readonly pointerState: PointerState = { x: 0, y: 0, z: 0, present: false, held: false };
   private readonly xrHands = new XRHands();
+  /**
+   * The player's hands, drawn. Two draw calls per hand, and only in a session:
+   * on the desk the mouse is the hand and the marker says so.
+   */
+  private readonly handViews = [0, 1].map(() => {
+    const v = new HandView(HAND_JOINTS.length, HAND_BONES.length, 0xffe0b0, 0.9);
+    v.boneTable = HAND_BONES;
+    v.setVisible(false);
+    return v;
+  });
   /** ?perf=1 / ?diag=1 — measured numbers, never shown to a player. */
   private readonly overlay = new Overlay(diagMode());
   /** The XR frame-time monitor: degrades knobs, never the picture. */
@@ -118,6 +129,9 @@ export class GustSystem extends createSystem({}) {
   private shadowEvery = 1;
   private frameCount = 0;
   private fpsSmoothed = 60;
+  private inkEnds = 0;
+  private closeAt = 0;
+  private spokeHint = false;
   private handLostSince = [-1, -1];
   private handReacquired = 0;
   private shadowCasters = 0;
@@ -306,6 +320,7 @@ export class GustSystem extends createSystem({}) {
     );
     for (const p of [...this.palms, ...this.hintPalms]) this.root.add(p.group);
     for (const s of this.palmShadows) this.root.add(s.mesh);
+    for (const v of this.handViews) this.scene.add(v.group);
 
     // Light the diorama like an object on a table: one sun with a real shadow,
     // a rim on every silhouette, filmic exposure. See src/render/look.ts.
@@ -760,7 +775,8 @@ export class GustSystem extends createSystem({}) {
       }
       case 'stageClear': {
         this.audio.bloom(e.grand);
-        this.audio.say('written');
+        // No line here. "The book is written" said four times a run is a
+        // sound effect; it is said once, when the ink is actually drying.
         this.sunbeam.target = 1;
         const view = this.islandViews.get(e.course.goal.id);
         if (view && !view.lush) {
@@ -805,7 +821,12 @@ export class GustSystem extends createSystem({}) {
         } catch {
           /* the book lasts for this visit only */
         }
-        this.room.setJournal(this.journal);
+        // The last twenty seconds are the picture: the pen writes the line in
+        // front of the player, the blot pools when it is lifted, and only then
+        // does the room speak. The entry is already in memory and in storage;
+        // this is the moment it becomes the keeper's book.
+        this.room.writeJournal(this.journal);
+        this.inkEnds = this.time + Room.INK_SECONDS;
         const view = this.islandViews.get(game.course.goal.id);
         if (view) this.foliage.plantGarden(view, e.garden, e.garden.runs - 1);
         break;
@@ -1073,6 +1094,24 @@ export class GustSystem extends createSystem({}) {
       }
     }
     if (this.overlay.active) this.overlay.set(this.time, this.diagLines());
+
+    // ── the voice, at the moments that matter ──
+    // In a headset there is no first pointer gesture, so the entry line waited
+    // forever. It waits for a hand instead, and for the lamp to be up.
+    if (!this.spokeEntry && presenting && this.time > 2.2 && (this.live[0] || this.live[1])) {
+      this.spokeEntry = true;
+      this.audio.say('entry');
+    }
+    // the ink dries, then the book is spoken of, then the last word in the room
+    if (this.inkEnds > 0 && this.time >= this.inkEnds) {
+      this.inkEnds = 0;
+      this.audio.say('written');
+      this.closeAt = this.time + 1.8;
+    }
+    if (this.closeAt > 0 && this.time >= this.closeAt) {
+      this.closeAt = 0;
+      this.audio.say('close');
+    }
     // ?speed=N fast-forwards the simulation (for testing and time-lapses)
     this.subIndex = 0;
     this.subCount = Math.max(1, this.stepper.pending(dt) * this.speed);
@@ -1139,22 +1178,48 @@ export class GustSystem extends createSystem({}) {
     const hands = game.hands;
     for (let i = 0; i < 2; i++) {
       const h = this.live[i];
-      // in the headset the player's real hands are already visible
-      const show = !presenting || this.autoplay;
-      this.palms[i].update(show ? h : null, hands.streams[i].enabled ? hands.streams[i].strength : 0, dt);
+      // the tracked hand itself (not a marker): beads on the joints, in world space
+      {
+        const palm = i === 0 ? this.xrHands.left : this.xrHands.right;
+        const view = this.handViews[i];
+        view.update(
+          palm.joints ?? [],
+          palm.jointValid ?? [],
+          this.player.matrixWorld,
+          presenting && palm.active && palm.isHand,
+        );
+      }
+      // In the headset the player's real hands are visible, so the drawn palm
+      // markers would be a second pair of hands. Their SHADOWS are the opposite:
+      // a real hand does not cast anything onto a diorama through a bell jar, and
+      // a hand crossing the island with its shadow under it is the image this
+      // game is for. So the markers stay hidden and the shadows are drawn.
+      const showMarkers = !presenting || this.autoplay;
+      this.palms[i].update(showMarkers ? h : null, hands.streams[i].enabled ? hands.streams[i].strength : 0, dt);
       // ground the hand: a palm over an island darkens it
       const shadow = this.palmShadows[i];
-      if (h && show) {
-        const gy = groundBelow(game.course.terrain, h.position.x, h.position.z, h.position.y);
-        if (Number.isFinite(gy)) {
-          // Simulation units are 1:7, so a hand 20 cm above the table is 1.4 of
-          // them. Convert to world metres before deciding how strong a shadow
-          // a real hand would throw.
-          const height = Math.max(0, h.position.y - gy) * S;
-          shadow.place(h.position.x, gy, h.position.z, 1 + height * 2.2, Math.max(0, 1 - height / 0.5));
-        } else {
-          shadow.place(0, 0, 0, 1, 0);
-        }
+      if (h) {
+        const ground = groundBelow(game.course.terrain, h.position.x, h.position.z, h.position.y);
+        // Off an island there is still a surface under the hand: the case floor.
+        // A hand crossing the water between the islands should darken it, which
+        // is most of what makes the gesture feel attached to the world.
+        const overIsland = Number.isFinite(ground);
+        const gy = overIsland ? ground : 0;
+        // Heights are in simulation units (1:30). A real hand 20 cm above the
+        // table is 6 of them; convert to metres before deciding how strong a
+        // shadow a hand at that distance would throw.
+        const height = Math.max(0, h.position.y - gy) * S;
+        const fade = overIsland ? 0.5 : 0.62;
+        // In a session the hand is further away and always present: keep it felt,
+        // not heavy.
+        const k = presenting ? 0.8 : 1;
+        shadow.place(
+          h.position.x,
+          gy,
+          h.position.z,
+          1 + height * 2.2,
+          Math.max(0, 1 - height / fade) * k,
+        );
       } else {
         shadow.place(0, 0, 0, 1, 0);
       }
@@ -1308,6 +1373,13 @@ export class GustSystem extends createSystem({}) {
     }
     this.hintLevel += ((want ? 1 : 0) - this.hintLevel) * (1 - Math.exp(-3 * dt));
     const show = this.hintLevel > 0.03;
+    // The hint is a pair of golden hands, not a sentence across the sky, so the
+    // recording is used once: the first time the game decides to teach, the room
+    // also says what the hands are for. After that it would be nagging.
+    if (show && !this.spokeHint) {
+      this.spokeHint = true;
+      this.audio.say('hint');
+    }
     if (show) this.ghost.update(game, dt);
     this.hintPalms[0].update(show ? this.ghost.left : null, 3, dt, this.hintLevel * 0.8);
     this.hintPalms[1].update(show ? this.ghost.right : null, 3, dt, this.hintLevel * 0.8);
