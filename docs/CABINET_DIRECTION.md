@@ -116,7 +116,8 @@ desk: their book, their labels, their name in the brass. Frame:
 
 ## Verified, and how
 
-- `tsc --noEmit` clean; **156/156 tests**; `GUST_HTTP=1 vite build` succeeds.
+- `tsc --noEmit` clean; **168/168 tests**; `GUST_HTTP=1 vite build` succeeds.
+  (The count is a snapshot: it was 156 when this section was written.)
 - New tests: `tests/pen.test.ts` (10) — ink is laid where the nib goes, ink does
   not double on crossing, the hand is deterministic per seed, small caps stand
   taller than x-height, every letter has a glyph. `tests/journal.test.ts` (14) —
@@ -289,7 +290,8 @@ the sentence lands.
 | `lost` | a seed is lost, at most once every eighteen seconds |
 | `home` | the first seed to reach the far island |
 | `written` | the course closes and the book is written |
-| `hint`, `close` | recorded and wired, not yet triggered |
+| `hint` | the first pair of golden teaching hands, once per page, and only when the room is not already speaking |
+| `close` | the true end: after the ink dries and after the book line has finished |
 
 They are written in the same voice as the book — dry, precise, unsentimental.
 "Eleven came home. Write it down. The day, the seeds, the bearing."

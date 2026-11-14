@@ -81,14 +81,14 @@ browser". It is engine-agnostic.
 | Playable on Quest 3/3S | WebXR in Quest Browser; never run on a real headset | **Unproven** |
 | Seated, stationary | Tabletop 1:30 diorama, `locomotion: false`, no room-scale | **Excellent fit** |
 | ≤10 min satisfaction | 4 acts, 3–5 min a run | **Excellent fit** |
-| Fast cold start | 2,515 kB main chunk (697 kB gzip) + 456 kB msdf worker | **Needs measuring on device** |
+| Fast cold start | 2,268 kB main chunk (616 kB gzip); no msdf worker (removed). Desktop cold start on a software renderer: 8.5–11.2 s to first frame | **Bundle measured; device cold start still unmeasured** |
 | Genre | Casual / narrative, world-building | **Fits Gaming or Entertainment** |
 | Engine | Immersive Web SDK | **Explicitly allowed** |
-| Submission URL | none deployed | **Missing** |
-| Video | none | **Missing** |
-| Text description | none | **Missing** |
+| Submission URL | none deployed | **Missing — blocker; the owner must deploy** |
+| Video | none | **Missing — script ready in `VIDEO_STORYBOARD.md` / `DEMO_SCRIPT.md`** |
+| Text description | drafted in `DEVPOST_SUBMISSION.md` | **Ready except owner-only fields** |
 | Start membership / Dev Access | unknown | **Check now** |
-| Licensing | three.js, IWSDK, @pmndrs/uikit, Gemini API | **Assert and document** |
+| Licensing | three.js, IWSDK, uikit (stubbed out of the bundle), Gemini API | **Documented in `THIRD_PARTY_NOTICES.md`; root LICENSE present (MIT)** |
 
 **Conclusion: the premise that GUST is ineligible is wrong.** It is built on
 IWSDK, which the 2026 rules name as an accepted engine and give an explicit

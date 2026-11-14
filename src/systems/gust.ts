@@ -1123,9 +1123,11 @@ export class GustSystem extends createSystem({}) {
     if (this.inkEnds > 0 && this.time >= this.inkEnds) {
       this.inkEnds = 0;
       this.audio.say('written');
-      this.closeAt = this.time + 1.8;
+      this.closeAt = this.time + 1.2;
     }
-    if (this.closeAt > 0 && this.time >= this.closeAt) {
+    // The last word waits for the sentence before it to finish, so the two never
+    // cut each other: `say` stops whatever is playing.
+    if (this.closeAt > 0 && this.time >= this.closeAt && !this.audio.speaking) {
       this.closeAt = 0;
       this.audio.say('close');
     }
@@ -1425,7 +1427,9 @@ export class GustSystem extends createSystem({}) {
     // The hint is a pair of golden hands, not a sentence across the sky, so the
     // recording is used once: the first time the game decides to teach, the room
     // also says what the hands are for. After that it would be nagging.
-    if (show && !this.spokeHint) {
+    // ... and never on top of a line that is still being spoken: `say` cuts the
+    // previous recording, so a hint fired into the entry line would swallow it.
+    if (show && !this.spokeHint && !this.audio.speaking) {
       this.spokeHint = true;
       this.audio.say('hint');
     }

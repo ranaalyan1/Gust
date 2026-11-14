@@ -17,10 +17,24 @@ entrant_** are the only things a person can fill in (URLs, name, dates).
 
 _Count: 139 including spaces._
 
-## Track
+## Track — recommendation
 
-**Gaming** (with the Innovation and Technical Implementation criteria in mind —
-the judging is equally weighted, so the submission text is too).
+**Primary: Gaming.** The piece is a game: wind as an input, a course to cross,
+seeds to land, four acts, a run that ends and is recorded. The judging criteria
+(innovation, experience design, technical implementation, polish) are equally
+weighted, and this text is written to all four rather than to one.
+
+**Division: New Experience — confirmed by the owner** (16 Nov 2026). The owner has
+reviewed the project's history and the division's definition and has made the call;
+this document follows it. For the record, so the claim rests on something true:
+the cabinet as submitted is a new experience *of the game* — the room, the 1:30
+specimen scale under the bell jar, the hands-as-wind model, the keeper's book and
+garden, the recorded voice and the composed score are all this entry's work, and
+the earlier prototype shared the premise but not the experience. The owner is
+accountable for how the division reads against the rules; nobody else should
+restate this as an independent finding.
+
+If the form asks for the division: **New Experience**. Track: **Gaming**.
 
 ## Inspiration
 
@@ -49,6 +63,24 @@ air:
 Four acts, three to five minutes, one continuous take: dawn, the storm gate, the
 long crossing, the dandelion burst. At the end the keeper's ledger writes your run
 in front of you, in ink, and the room says the book is written.
+
+## Why this has to be hands (and not a controller)
+
+A controller gives you a cursor with a position. Wind is not a cursor: it is
+direction, speed, spread and the shape of the thing making it. On a hand you get
+all four for free — the palm's facing sets the direction, the swing sets the speed,
+how far the fingers are spread sets the width of the stream, and how fast you stop
+sets the gust. None of that needs to be explained, because everyone already knows
+how a hand moves air.
+
+The second reason is the picture. In a session the player's own shadow falls across
+the islands as their hand passes over the case. That image — a hand, a shadow, and a
+tiny world that leans away from it — is only possible with hands. With a controller
+you would see a plastic wand and a cursor ring.
+
+The game is still playable with controllers and with a mouse or a finger, and the
+whole gesture set has a pointer equivalent. Hands are not a gate; they are the
+reason the piece exists.
 
 ## How it was built
 
@@ -102,7 +134,8 @@ lands in a hole in the sound.
 
 ## What is still wrong (honestly)
 
-- No device measurements yet. The build has been exercised in a headless Chromium
+- **No device measurements yet, and no public deployment yet.** Both are the
+  remaining blockers; see `docs/COMPETITION_FINAL_CHECKLIST.md`. The build has been exercised in a headless Chromium
   and in the IWER emulator; no frame rate on a Quest has been claimed anywhere in
   this submission. `?diag=1` exists so the first person with a headset can produce
   those numbers in one session.
@@ -145,4 +178,6 @@ API, Vercel serverless functions, Google Gemini (mission text only).
 - **_TBD by the entrant_** — video URL (≤ 3:00)
 - **_TBD by the entrant_** — repository URL
 - **_TBD by the entrant_** — entrant name / team
-- Launch date: **_TBD by the entrant_**
+- Launch date: **_TBD by the entrant_** — confirm before submitting; the game is
+  playable today, so "live at submission" is defensible only once the hosted URL
+  actually answers.
