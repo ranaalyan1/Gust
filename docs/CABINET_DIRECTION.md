@@ -320,6 +320,36 @@ The score follows the **sky**, not the stage number — the sky is the clock —
 it steps back to a third of itself whenever the Weather Mind speaks, so the
 sentence lands in a hole in the music rather than on top of it.
 
+## Hands, ink, and the frame guard
+
+Three things learned in the last week, each of which was wrong in a way worth
+recording.
+
+**The headset does not draw your hands.** A comment in the shell claimed it did.
+It does not: an immersive session yields joint poses and never composites hands
+into the application's frame. The bug was invisible on a desktop and obvious the
+first time the game ran in the emulator with hand tracking on, where the only
+thing visible was the emulator's own axis gizmos. `src/render/handView.ts` now
+draws the 25 WebXR joints as soft warm beads with faint bones: two draw calls per
+hand, additive, depth-write off. The palm markers stay hidden in a session — but
+the palm *shadow* is drawn, because a real hand does not cast onto a diorama
+through glass and the shadow is the image.
+
+**The ledger is written, not redrawn.** `written` used to be a sound effect fired
+on every stage clear. Now the newest line arrives left to right over 2.6 s, the
+blot pools only when the pen lifts, and only then does the room speak — the book
+is written, and then the last word.
+
+**Quality degrades the knobs, never the picture.** `src/core/perf.ts` watches a
+rolling average of XR frame times; after two sustained seconds over budget it
+drops a tier, and it never climbs back on its own. A tier may change shadow
+cadence, wind-streak density and foveation — never the shaders and never the
+lamp's shadow of the jar or of the player's hand.
+
+**Brass under one lamp is not chrome.** Roughness 0.34 plus bloom turned every
+ring on the case into a white hoop. Brass wants 0.42 and a broad, slightly broken
+highlight.
+
 ## What pass three still does not have
 
 - The islands are still pancakes. Now that there is a lens on them, that is the
