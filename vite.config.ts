@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { type Plugin, defineConfig, loadEnv } from 'vite';
 
@@ -71,10 +72,23 @@ export default defineConfig({
   esbuild: { target: 'esnext' },
   resolve: {
     dedupe: ['three', '@pmndrs/uikit', '@pmndrs/uikit-horizon', '@pmndrs/uikit-lucide'],
+    // IWSDK carries uikit for its spatial-UI feature, which this project turns
+    // off and never imports. Swapping in a four-name stub removes 714 kB of
+    // minified library (242 kB gzipped) and a 456 kB font worker from the
+    // bundle. See src/vendor/uikit-stub.ts.
+    alias: [
+      {
+        find: /^@pmndrs\/uikit$/,
+        replacement: fileURLToPath(new URL('./src/vendor/uikit-stub.ts', import.meta.url)),
+      },
+    ],
   },
   optimizeDeps: {
     exclude: ['@babylonjs/havok'],
-    include: ['three', '@pmndrs/uikit', '@pmndrs/uikit-horizon', '@pmndrs/uikit-lucide', '@drawcall/uikitml'],
+    // Only what the app imports directly. The uikit entries would pre-bundle the
+    // real library and defeat the alias above (three is listed because IWSDK
+    // imports it by many specifiers and deduping the prebundle is faster).
+    include: ['three'],
     esbuildOptions: { target: 'esnext' },
   },
   publicDir: 'public',
