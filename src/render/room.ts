@@ -288,7 +288,11 @@ const plankWood = (): MeshStandardMaterial => {
 };
 
 const brassMaterial = (): MeshStandardMaterial =>
-  new MeshStandardMaterial({ map: brass(), color: 0xffffff, roughness: 0.34, metalness: 0.72 });
+  // Roughness 0.34 under a single bright lamp turned every ring on the case into
+  // a white hoop — the bloom had nothing to eat but specular. Brass is a warm
+  // metal with a broad, slightly broken highlight: 0.42 keeps the shine and
+  // takes the neon out of it.
+  new MeshStandardMaterial({ map: brass(), color: 0xffffff, roughness: 0.42, metalness: 0.72 });
 
 /* ── the room ────────────────────────────────────────────────────────────── */
 
@@ -396,7 +400,7 @@ export class Room {
       new MeshBasicMaterial({
         color: 0xdfe9ee,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.12,
         depthWrite: false,
         blending: AdditiveBlending,
       }),
@@ -411,7 +415,7 @@ export class Room {
       new MeshBasicMaterial({
         color: 0xcfdbe2,
         transparent: true,
-        opacity: 0.16,
+        opacity: 0.09,
         depthWrite: false,
         blending: AdditiveBlending,
       }),
