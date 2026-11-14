@@ -115,12 +115,25 @@ export class WindStreaks {
     this.life[i] = this.maxLife[i];
   }
 
+  /**
+   * How many of the streaks are drawn, 0..1. The frame monitor uses this on a
+   * headset that is missing frames: fewer tracers in the air, same picture.
+   */
+  setDensity(fraction: number): void {
+    this.density = Math.max(0, Math.min(1, fraction));
+    const active = Math.round(this.n * this.density);
+    this.geometry.setDrawRange(0, active * 2);
+  }
+
+  private density = 1;
+
   update(field: WindField, dt: number, spawn: StreakSpawn, intensity = 1): void {
     const { head, tail, life, maxLife, positions, colors } = this;
     const hc = this.handColor;
     const wc = this.weatherColor;
     const kTail = 1 - Math.exp(-9 * dt);
-    for (let i = 0; i < this.n; i++) {
+    const active = Math.max(0, Math.round(this.n * this.density));
+    for (let i = 0; i < active; i++) {
       const j = i * 3;
       life[i] -= dt;
       if (life[i] <= 0) this.respawn(i, spawn);

@@ -16,6 +16,7 @@ import {
   DEFAULT_GESTURES,
   FIXED_DT,
   FixedStepper,
+  FrameGuard,
   GARDEN_STORAGE_KEY,
   Game,
   type GameEvent,
@@ -37,6 +38,8 @@ import {
   validateMission,
   vec3,
 } from '../core/index.js';
+import { Overlay, diagMode, markOnce, marks } from '../boot/diag.js';
+import { disarmStartupGuard } from '../boot/guard.js';
 import { PointerInput } from '../input/pointer.js';
 import { XRHands } from '../input/xrHands.js';
 import { GustAudio } from '../audio/audio.js';
@@ -108,6 +111,16 @@ export class GustSystem extends createSystem({}) {
   private readonly pointerHands = new PointerHands();
   private readonly pointerState: PointerState = { x: 0, y: 0, z: 0, present: false, held: false };
   private readonly xrHands = new XRHands();
+  /** ?perf=1 / ?diag=1 — measured numbers, never shown to a player. */
+  private readonly overlay = new Overlay(diagMode());
+  /** The XR frame-time monitor: degrades knobs, never the picture. */
+  private readonly frames = new FrameGuard({ budgetMs: 13.9, sustain: 2, maxTier: 2 });
+  private shadowEvery = 1;
+  private frameCount = 0;
+  private fpsSmoothed = 60;
+  private handLostSince = [-1, -1];
+  private handReacquired = 0;
+  private shadowCasters = 0;
   private readonly filters: [HandFilter, HandFilter] = [new HandFilter(), new HandFilter()];
   private readonly rawPos = [vec3(), vec3()];
   private readonly rawNormal = [vec3(0, 1, 0), vec3(0, 1, 0)];
@@ -216,6 +229,12 @@ export class GustSystem extends createSystem({}) {
 
     const quality = num('quality', 1);
     configureRenderer(renderer, { quality });
+    // Shadows are drawn on a cadence the frame monitor owns (see applyTier), so
+    // the renderer must not update them on its own. Manual reset keeps the
+    // draw-call and triangle counts honest across the post pass.
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
+    renderer.info.autoReset = false;
     this.game = new Game({
       gestures: { ...DEFAULT_GESTURES, unitScale: UNIT },
       garden: parseGarden(saved),
@@ -292,6 +311,9 @@ export class GustSystem extends createSystem({}) {
     // a rim on every silhouette, filmic exposure. See src/render/look.ts.
     configureSunShadows(this.sky.sun);
     dressScene(this.root);
+    this.scene.traverse((o: { castShadow?: boolean }) => {
+      if (o.castShadow) this.shadowCasters++;
+    });
 
     // In the room the lamp is the only real light: the old sky sun stops
     // casting, the dome goes away, and the cloud sea has nothing to do.
@@ -345,6 +367,10 @@ export class GustSystem extends createSystem({}) {
         if (!(dt > 0)) dt = 1 / 72;
         if (dt > 0.25) dt = 0.25;
         elapsed += dt;
+        // one frame's worth of statistics, counted from here
+        this.frameCount++;
+        renderer.info.reset();
+        renderer.shadowMap.needsUpdate = this.frameCount % this.shadowEvery === 0;
         world.update(dt, elapsed);
         const frame = renderer.xr.getFrame?.();
         if (frame) world.runXRFrameCallbacks(frame, dt, elapsed);
@@ -360,10 +386,81 @@ export class GustSystem extends createSystem({}) {
         } else {
           renderer.render(world.scene, world.camera);
         }
+        this.afterRender(dt);
       });
     }
 
+    // The system is listening for hands, controllers, pointers and the XR
+    // button: from here a player can act.
+    markOnce('interactive');
     (window as unknown as { __gust: unknown }).__gust = { game: this.game, system: this };
+  }
+
+  // ── measurement ────────────────────────────────────────────────────────────
+
+  private perfCalls = 0;
+  private perfTris = 0;
+
+  /**
+   * Everything the frame told us. The first rendered frame is also the moment
+   * the start-up guard lets go: after this, a stray rejection is a bug, not a
+   * failed load, and an apology over a running game would be worse than the bug.
+   */
+  private afterRender(dt: number): void {
+    const info = this.renderer.info.render;
+    this.perfCalls = info.calls;
+    this.perfTris = info.triangles;
+    if (this.frameCount === 1) {
+      markOnce('first-frame');
+      disarmStartupGuard();
+      const frame = marks['first-frame'] ?? 0;
+      const live = marks.interactive ?? frame;
+      console.info(
+        `[gust] cold start ${frame.toFixed(0)} ms to first frame, ${live.toFixed(0)} ms to interactive` +
+          (this.overlay.active ? '' : ' (add ?perf=1 for live numbers)'),
+      );
+    }
+    if (dt > 0) this.fpsSmoothed += (1 / dt - this.fpsSmoothed) * 0.08;
+    // The frame monitor is a headset instrument: on a desk the picture is worth
+    // more than the frame, and there is no fixed refresh to miss.
+    if (this.renderer.xr.isPresenting) {
+      const tier = this.frames.push(dt);
+      if (tier !== null) this.applyTier(tier);
+    }
+  }
+
+  /**
+   * Degrade the knobs that need no shader recompile, in this order: shadow
+   * cadence, then wind streaks, then foveation. The lamp's shadow of the jar and
+   * of the player's hand is the picture — it goes last, and at tier 2 it is
+   * still being drawn, only every third frame.
+   */
+  private applyTier(tier: number): void {
+    this.shadowEvery = tier >= 2 ? 3 : tier >= 1 ? 2 : 1;
+    this.streaks.setDensity(tier >= 2 ? 0.45 : tier >= 1 ? 0.7 : 1);
+    try {
+      this.renderer.xr.setFoveation(tier >= 2 ? 0.55 : 0);
+    } catch {
+      /* foveation is optional and unimplemented on some runtimes */
+    }
+  }
+
+  private diagLines(): string[] {
+    const game = this.game;
+    const lines: string[] = [];
+    const ms = 1000 / Math.max(1e-3, this.fpsSmoothed);
+    lines.push(`fps ${this.fpsSmoothed.toFixed(0).padStart(3)}  frame ${ms.toFixed(1)} ms`);
+    lines.push(`calls ${this.perfCalls}  tris ${(this.perfTris / 1000).toFixed(1)}k  casters ${this.shadowCasters}`);
+    if (this.overlay.mode !== 'diag') return lines;
+    const first = marks['first-frame'];
+    lines.push(`cold start ${first === undefined ? '—' : first.toFixed(0) + ' ms'}`);
+    lines.push(`act ${game.stage + 1}/4  ${game.phase}  tier ${this.frames.tier}  shadows 1/${this.shadowEvery}`);
+    const hand = this.renderer.xr.isPresenting ? 'xr' : 'desk';
+    const lost = this.handLostSince.map((t, i) => (t >= 0 && !this.live[i] ? `L${i ? 'R' : 'L'} lost ${(this.time - t).toFixed(1)}s` : '')).filter(Boolean);
+    lines.push(`hands ${hand}  ${this.live[0] ? 'L✓' : 'L·'} ${this.live[1] ? 'R✓' : 'R·'}  re-acquired ${this.handReacquired}${lost.length ? '  ' + lost.join(' ') : ''}`);
+    const pluck = marks.firstPluck;
+    lines.push(`first pluck ${pluck === undefined ? '—' : pluck.toFixed(0) + ' ms'}`);
+    return lines;
   }
 
   // ── placement ──────────────────────────────────────────────────────────────
@@ -623,6 +720,7 @@ export class GustSystem extends createSystem({}) {
       }
       case 'pluck':
         if (e.first) {
+          markOnce('firstPluck');
           this.audio.pluck(this.pan(e.seed.pos.x));
           this.everPlucked = true;
           if (typeof document !== 'undefined') document.body.classList.add('gust-playing'); // the title drifts away
@@ -954,8 +1052,27 @@ export class GustSystem extends createSystem({}) {
     }
     this.wasPresenting = presenting;
 
+    if (!this.post && this.frameCount === 0) {
+      // no post chain (?raw=1): the SDK's own loop draws, so release the guard here
+      markOnce('first-frame');
+      this.frameCount = 1;
+      disarmStartupGuard();
+    }
     this.place(dt, presenting);
     this.readInput(presenting);
+    // a hand that goes away and comes back is worth counting: it is the whole
+    // difference between a tracked session and a broken one
+    for (let i = 0; i < 2; i++) {
+      if (this.live[i]) {
+        if (this.handLostSince[i] >= 0) {
+          this.handReacquired++;
+          this.handLostSince[i] = -1;
+        }
+      } else if (this.handLostSince[i] < 0) {
+        this.handLostSince[i] = this.time;
+      }
+    }
+    if (this.overlay.active) this.overlay.set(this.time, this.diagLines());
     // ?speed=N fast-forwards the simulation (for testing and time-lapses)
     this.subIndex = 0;
     this.subCount = Math.max(1, this.stepper.pending(dt) * this.speed);
