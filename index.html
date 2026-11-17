@@ -29,19 +29,22 @@
         position: fixed;
         inset: 0;
       }
+      /* The title sits in the band above the bell jar, clear of the dandelion
+         and of the Enter XR control. It used to be centred at 15% and landed
+         on the seed's head and the glass. */
       #wordmark {
         position: fixed;
         left: 0;
         right: 0;
-        top: 15%;
+        top: clamp(56px, 8.5vh, 96px);
         text-align: center;
         pointer-events: none;
         color: #fff;
-        font: 200 clamp(40px, 9vw, 92px) / 1 ui-rounded, 'Segoe UI', system-ui, sans-serif;
+        font: 200 clamp(30px, 4.6vw, 56px) / 1 ui-rounded, 'Segoe UI', system-ui, sans-serif;
         letter-spacing: 0.42em;
         text-indent: 0.42em;
-        text-shadow: 0 2px 30px rgba(40, 30, 80, 0.35);
-        opacity: 0.94;
+        text-shadow: 0 2px 24px rgba(40, 30, 80, 0.45);
+        opacity: 0.9;
         transition: opacity 2.4s ease, transform 2.4s ease;
         z-index: 4;
       }

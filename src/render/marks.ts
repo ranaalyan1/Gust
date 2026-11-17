@@ -196,25 +196,31 @@ function pageTexture(journal: Journal, side: 'left' | 'right', reveal = 1): Data
 /* ── the brass ───────────────────────────────────────────────────────────── */
 
 function plaqueTexture(keeper: string): DataTexture {
-  const w = 640;
-  const h = 160;
+  // 1024×256, not 640×160: the name is the one piece of text in the room the
+  // viewer is meant to read, and at 640 px the letters were under six pixels
+  // tall on a 1280 px screen.
+  const w = 1024;
+  const h = 256;
   const buf = new InkBuffer(w, h, [0.72, 0.56, 0.28]);
   // hammered brass: warm, worn, a little uneven
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const n = hash01(x * 31 + y * 97) * 0.5 + hash01(x * 7 + y * 13) * 0.5;
-      const wear = 0.9 + 0.14 * Math.sin(x * 0.05 + y * 0.02) + (n - 0.5) * 0.1;
+      // wear is a soft mottle, not stripes: at 1024 px a 0.05 rad/px sine banded the plate
+      const wear = 0.93 + 0.04 * Math.sin(x * 0.012 + y * 0.03) + (n - 0.5) * 0.08;
       const edge = Math.min(x, y, w - 1 - x, h - 1 - y) / 18;
       const k = wear * (0.82 + 0.18 * Math.min(1, edge));
       const i = (y * w + x) * 3;
-      buf.rgb[i] = Math.min(1, 0.74 * k);
-      buf.rgb[i + 1] = Math.min(1, 0.58 * k);
-      buf.rgb[i + 2] = Math.min(1, 0.29 * k);
+      // a brighter, honest brass: the old base sat in the shadow of the jar's
+      // foot and read as a dark strip, so the cut letters had no contrast
+      buf.rgb[i] = Math.min(1, 0.84 * k);
+      buf.rgb[i + 1] = Math.min(1, 0.65 * k);
+      buf.rgb[i + 2] = Math.min(1, 0.32 * k);
     }
   }
   // a cut border, two hairlines
-  const m = 16;
-  for (const inset of [0, 7]) {
+  const m = 24;
+  for (const inset of [0, 9]) {
     buf.segment(m + inset, m + inset, w - m - inset, m + inset, 0.5, 0.3);
     buf.segment(w - m - inset, m + inset, w - m - inset, h - m - inset, 0.5, 0.3);
     buf.segment(w - m - inset, h - m - inset, m + inset, h - m - inset, 0.5, 0.3);
@@ -222,8 +228,8 @@ function plaqueTexture(keeper: string): DataTexture {
   }
   // engraving reads as a shadow under a lit edge: cut twice, one pixel apart
   const text = sanitizeKeeper(keeper);
-  const size = text.length > 18 ? 30 : text.length > 13 ? 36 : 42;
-  const opts = { size, seed: 13, caps: true, slant: 0.12, jitter: 0.22, letterSpacing: 0.05, align: 'center' as const };
+  const size = text.length > 20 ? 46 : text.length > 14 ? 56 : 66;
+  const opts = { size, seed: 13, caps: true, slant: 0.12, jitter: 0.22, letterSpacing: 0.06, align: 'center' as const };
   const inkBefore = buf.ink.slice();
   write(buf, text, w / 2 + 1.2, h / 2 + 1.2, { ...opts, alpha: 0.85 });
   const cut = buf.toRGBA(INK);
@@ -377,7 +383,7 @@ export class DeskMarks {
 
     // ── the plaque, cut with the keeper's name ──
     this.plaqueTex = plaqueTexture(DEFAULT_KEEPER);
-    const plate = new Mesh(new BoxGeometry(0.24, 0.005, 0.062), new MeshStandardMaterial({ color: 0x9a7a34, roughness: 0.4, metalness: 0.55 }));
+    const plate = new Mesh(new BoxGeometry(0.24, 0.005, 0.062), new MeshStandardMaterial({ color: 0xc9a55a, roughness: 0.4, metalness: 0.4 }));
     // The plate is mounted on the front of the base, canted back a little so
     // the light rakes across the cut letters instead of flattening them.
     plate.position.set(-0.02, tableY + 0.034, caseR + 0.05);
@@ -385,7 +391,7 @@ export class DeskMarks {
     this.group.add(plate);
     // Engraved brass has to catch light, not mirror it: a near-vertical,
     // high-metalness plate in a room lit from above reads as a black rectangle.
-    this.plaqueMat = new MeshStandardMaterial({ map: this.plaqueTex, color: 0xffffff, roughness: 0.44, metalness: 0.3 });
+    this.plaqueMat = new MeshStandardMaterial({ map: this.plaqueTex, color: 0xffffff, roughness: 0.44, metalness: 0.3, emissive: 0x3a2a10, emissiveIntensity: 0.6 });
     const face = new Mesh(new PlaneGeometry(0.233, 0.0595), this.plaqueMat);
     face.position.set(0, 0.0035, 0);
     face.rotation.x = -Math.PI / 2;

@@ -53,6 +53,7 @@ import {
   type Texture,
   TorusGeometry,
   Vector3,
+  Euler,
 } from '@iwsdk/core';
 import { hash01 } from '../core/random.js';
 import type { SkyBlend } from '../core/game.js';
@@ -332,7 +333,7 @@ export class Room {
     this.inner.add(table);
 
     // a turned brass edge, because a bare cylinder edge reads as a cardboard cut-out
-    const rim = new Mesh(new TorusGeometry(TABLE_R, 0.013, 8, 96), metal);
+    const rim = new Mesh(new TorusGeometry(TABLE_R, 0.018, 10, 96), darkBrass);
     rim.rotation.x = Math.PI / 2;
     rim.position.y = TABLE_Y;
     this.inner.add(rim);
@@ -556,14 +557,22 @@ export class Room {
     arm.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), armDir.clone().normalize());
     this.inner.add(arm);
 
-    const shadePos = armEnd.clone().add(new Vector3(0.02, 0.02, 0.02));
+    // The shade hangs from its apex, the way a real shade hangs from its yoke:
+    // the arm ends at the cone's tip, not at its centre, so nothing floats.
+    const shadeRot = new Euler(0.5, 0.1, -0.62);
+    const apexOffset = new Vector3(0, 0.075, 0).applyEuler(shadeRot);
+    const shadePos = armEnd.clone().sub(apexOffset);
     const shadeGeo = new ConeGeometry(0.135, 0.15, 32, 1, true);
     const shadeMat = new MeshStandardMaterial({ map: brass(), color: 0xa8843c, roughness: 0.5, metalness: 0.62, side: DoubleSide });
     this.shiny.push(shadeMat);
     this.shade = new Mesh(shadeGeo, shadeMat);
     this.shade.position.copy(shadePos);
     // point the shade's mouth down and in toward the case
-    this.shade.rotation.set(0.5, 0.1, -0.62);
+    this.shade.rotation.copy(shadeRot);
+    // a small brass knuckle where the arm meets the apex
+    const knuckle = new Mesh(new SphereGeometry(0.012, 12, 10), metal);
+    knuckle.position.copy(armEnd);
+    this.inner.add(knuckle);
     this.shade.castShadow = true;
     this.inner.add(this.shade);
 
