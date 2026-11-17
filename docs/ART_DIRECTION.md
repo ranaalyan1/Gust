@@ -203,3 +203,72 @@ tests), build succeeds.
   positioned at the wind's origin.
 - **Levels against the real mix.** The compressor thresholds were tuned before
   the chord moved; the pad may now sit too hot during a storm.
+
+---
+
+# Fourth pass: the cabinet
+
+The first three passes taught the diorama to look lit, to move, and to sound like
+the field it sits in. This one is about the **box around it** — the desk, the
+bell jar, the drawn air, and the two places the build was quietly lying. Same
+rule as every pass before: a change was kept only if a captured frame from the
+running build showed it, and every claim below is a frame in `docs/images/`
+(`pass4-*.png`, real 1000×620 captures, not mock-ups).
+
+![The cabinet at dawn](images/pass4-dawn.png)
+
+## Three real bugs
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `THREE.BufferGeometry.computeBoundingSphere(): radius is NaN`, and a third of the storm gate's back wall silently missing | `src/render/islands.ts`: the wall's rounding term ran `pow(t, 1.6)` on a `t` that floating-point error had pushed **below zero** — `pow(negative, fractional)` is `NaN`, which poisons the position attribute | `t` is clamped to `[0, 1]` before the power, with a comment saying why. 276 of 600 vertices were NaN; now zero. |
+| A palm marker drew a cone three palms long — a searchlight hanging in the air, and the "scratches" over the diorama in every ghost capture | `PalmMarker` built a `breath` cone at `size * 3` and then **never added it to the group**; adding it exposed how big it was | Cone resized to the palm (`0.42 × size` radius, `1.25 × size` long), opacity 0.02–0.07, and it is graded in with the marker's own fade |
+| The framed botanical plate was a blank white card | `CanvasTexture` defaults to **no colour space**, so a hand-drawn sRGB canvas is read as linear and washes out to paper white | `plateTex.colorSpace = SRGBColorSpace`, a dark matte behind the print, dimmer paper, heavier ink |
+
+## The air is not made of hairlines
+
+`WindStreaks` drew each tracer as a `LineSegments` pair. At 1:30 a one-pixel
+line is a hair, so a thermal full of tracers read as **scratches on the inside of
+the glass** — the single ugliest thing in every storm capture. Each tracer is now
+three soft beads strung along the path it just travelled, brightest at the head,
+drawn as one `Points` call with a radial `DataTexture` (no asset file, still no
+per-frame allocation). Moving air reads as dust you can almost feel on your face
+instead of as wire.
+
+## The box
+
+| Change | Why |
+| --- | --- |
+| **Case atmosphere rewritten** (`src/render/atmosphere.ts`, new) | The old case sky was a vertical gradient in *object* space, so it lay on its side. It is now a world-space dusk: warm horizon, violet zenith, a visible sun disc and two ranges of far hills at different hazes so the case has a horizon instead of a wall. Key and fill lights sit at 0.20 / 0.045 candela — about a tenth of the first attempt, which turned the dome milky lavender. |
+| **Dust, not snow** | 34 additive motes at 2.4 mm, warm-tinted, drifting on the case's own slow clock; the room's dust is separate and dimmer. |
+| **A real specular glass** (`src/render/glass.ts`) | The dome samples a 128 px `WebGLCubeRenderTarget` built from the room (a PMREM cannot be sampled by `textureCube`), with Fresnel-driven reflection and a caustic ring on the desk. Before this the jar was a matte grey shell. |
+| **Brass with a grain** | `darkBrass` 0.55 roughness / 0.8 metalness, a warmer tint, and a desk wash at 0.9 so the brass has something to reflect. |
+| **The desk tells time** | A framed pressed-fern plate (hand-drawn canvas: foxing, rachis, pinnae, a caption in Latin), an ink bottle with a quill cut down to scale, a brass dish of fourteen loose seeds, and the keeper's ledger open at the day's entries. |
+| **Islands have geology** | Three stone courses with dark seams, wet undersides under overhangs, a pale turf lip at the coast, and vertex shading by *relief* — crowns catch the sky, hollows go damp. The tops used to be one value whatever shape they were, which is what made them read as painted plates. |
+| **Grass is a field, not a sheet** | `foliage.ts`: palette of eight greens with dry tips, per-blade lean, density that thins at the coast, and normals that follow the blade instead of a forced `(0,1,0)`. |
+| **The shell has a face** (`index.html`, `src/boot/chrome.ts`) | A wordmark and one line of invitation, both in the page rather than in the scene, both fading out the moment a run starts; the dev XR pill restyled to match. |
+| **Lens** | Bloom 0.52 warm, vignette 0.42, grain 0.0075, an unsharp mask after the blur, exposure 1.20. The tilt-shift band was widened to 0.132 so the case's brass rim stays crisp. |
+
+## Measured
+
+- `npx tsc --noEmit` clean; **168/168 tests pass**; `npm run build` succeeds.
+- Live draw calls at `?quality=1`, dawn, desktop camera: **262 calls,
+  165 455 triangles, 939 points, 23 textures, 39 programs**, 230 meshes of
+  which 5 are instanced and 67 transparent. That is inside a Quest 3 budget at
+  72 Hz for a scene of this kind, but it is not a device measurement — see below.
+- The NaN tracer is gone from the console in all three acts (it used to appear
+  once, on first frame, in every session).
+
+## What this pass still does not fix
+
+1. **Draw calls.** 262 is fine on a desktop GPU and *probably* fine on Quest 3;
+   the room's 230 separate meshes would merge into a handful with a static
+   batch, and that is the cheapest next win.
+2. **The storm gate reads as a rock, not a gate.** Its tunnel runs along x, so
+   from the front camera you see the roof and never the mouth. The geometry is
+   right and the seed flies through it; the *default framing* is wrong for act 2.
+   Either the camera needs a per-act move, or the gate needs a raised arch face.
+3. **Material variety is still one Lambert response.** Stone, moss and paper all
+   shade the same way.
+4. **Animation, hand presence, spatially reactive audio and device profiling**
+   remain exactly where the first three passes left them.

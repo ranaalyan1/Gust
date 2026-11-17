@@ -29,8 +29,8 @@ import { type Garden, type GardenPlant, plantGrowth } from '../core/garden.js';
 import { FlatBuilder, shade } from './build.js';
 import type { IslandView } from './islands.js';
 
-export const MAX_GRASS = 1100;
-const MAX_FLOWERS = 420;
+export const MAX_GRASS = 1700;
+const MAX_FLOWERS = 460;
 const MAX_TREES = 40;
 
 type Kind = 'grass' | 'flower' | 'tree';
@@ -62,40 +62,126 @@ interface Plant {
   delay: number;
 }
 
+/**
+ * A tuft of grass, and the reason the meadow used to read as spikes.
+ *
+ * A blade is not a triangle. It is a narrow ribbon that leaves the soil
+ * vertically, bows over under its own weight, and tapers to nothing at the tip.
+ * Two segments and a per-vertex gradient — dark at the root, bright at the tip —
+ * are enough to make the eye see turf instead of a row of green cocktail
+ * sticks. Six blades at different ages, plus two round leaves at the base, and
+ * one instance of this reads as a plant.
+ */
 function grassGeometry(): BufferGeometry {
   const b = new FlatBuilder();
-  const c = new Color(1, 1, 1);
-  const dark = new Color(0.84, 0.9, 0.8);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.4;
-    const r = i === 0 ? 0 : 0.34;
-    const ox = Math.cos(a) * r, oz = Math.sin(a) * r;
-    const w = 0.16;
-    const h = i === 0 ? 1 : 0.62 + 0.12 * i;
-    const dx = Math.cos(a + 1.57) * w, dz = Math.sin(a + 1.57) * w;
-    const lean = 0.22;
-    b.tri(ox - dx, 0, oz - dz, ox + dx, 0, oz + dz, ox + Math.cos(a) * lean, h, oz + Math.sin(a) * lean, i % 2 ? dark : c);
+  const root = new Color(0.36, 0.44, 0.26);
+  const mid = new Color(0.72, 0.86, 0.52);
+  const tip = new Color(1.0, 1.0, 0.82);
+  const leafDark = new Color(0.42, 0.62, 0.34);
+  const leafLight = new Color(0.78, 0.92, 0.56);
+
+  const blade = (angle: number, height: number, width: number, bend: number, tint: number): void => {
+    const ax = Math.cos(angle), az = Math.sin(angle);
+    const px = -az, pz = ax; // across the blade
+    const segs = 3;
+    let prevX = 0, prevY = 0, prevZ = 0, prevW = width;
+    let prevC = root;
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      const w = width * (1 - t * 0.92);
+      // the curve: out along the lean, easing over as it climbs
+      const out = bend * Math.pow(t, 1.7);
+      const x = ax * out;
+      const z = az * out;
+      const y = height * (t - 0.16 * bend * t * t);
+      const c = t < 0.5
+        ? root.clone().lerp(mid, t * 2)
+        : mid.clone().lerp(tip, (t - 0.5) * 2 * tint);
+      const cPrev = prevC;
+      b.tri3(
+        prevX - px * prevW, prevY, prevZ - pz * prevW,
+        prevX + px * prevW, prevY, prevZ + pz * prevW,
+        x, y, z,
+        cPrev, cPrev, c,
+      );
+      b.tri3(
+        prevX + px * prevW, prevY, prevZ + pz * prevW,
+        x + px * w, y, z + pz * w,
+        x, y, z,
+        cPrev, c, c,
+      );
+      prevX = x; prevY = y; prevZ = z; prevW = w; prevC = c;
+    }
+  };
+
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.35;
+    const h = 0.40 + 0.26 * ((i * 37) % 5) / 5 + (i === 0 ? 0.30 : 0);
+    blade(a, h, 0.05, 0.2 + 0.1 * (i % 2), 0.85 + 0.15 * (i % 3));
+  }
+
+  // two small rounded leaves low in the tuft: clover, plantain, the green
+  // furniture of a meadow
+  for (let i = 0; i < 2; i++) {
+    const a = 1.1 + i * 2.7;
+    const r = 0.16;
+    const cx = Math.cos(a) * r;
+    const cz = Math.sin(a) * r;
+    const ex = Math.cos(a) * r * 1.9;
+    const ez = Math.sin(a) * r * 1.9;
+    const nx = -Math.sin(a) * 0.07;
+    const nz = Math.cos(a) * 0.07;
+    b.tri3(cx, 0.02, cz, cx + nx, 0.10, cz + nz, ex, 0.03, ez, leafDark, leafLight, leafDark);
+    b.tri3(cx, 0.02, cz, ex, 0.03, ez, cx - nx, 0.10, cz - nz, leafDark, leafDark, leafLight);
   }
   return b.build();
 }
 
+/**
+ * A wild flower: a stem, a pair of leaves, and a head of six rounded petals
+ * around a warm heart. Petals are shaded from a pale heart to a saturated tip,
+ * which is what a real petal does with the light it lets through.
+ */
 function flowerGeometry(): BufferGeometry {
   const b = new FlatBuilder();
-  const stem = new Color(0.36, 0.62, 0.3);
-  const petal = new Color(1, 1, 1);
-  const heart = new Color(1.0, 0.82, 0.25);
-  const w = 0.045;
-  b.tri(-w, 0, 0, w, 0, 0, 0, 0.72, 0, stem);
-  b.tri(0, 0, -w, 0, 0, w, 0, 0.72, 0, stem);
-  const cy = 0.74;
-  for (let i = 0; i < 5; i++) {
-    const a0 = (i / 5) * Math.PI * 2;
-    const a1 = ((i + 0.72) / 5) * Math.PI * 2;
-    const r = 0.3;
-    b.tri(0, cy, 0, Math.cos(a0) * r, cy + 0.1, Math.sin(a0) * r, Math.cos(a1) * r, cy + 0.1, Math.sin(a1) * r, petal);
+  const stemLo = new Color(0.26, 0.44, 0.24);
+  const stemHi = new Color(0.52, 0.72, 0.36);
+  const heart = new Color(1.0, 0.78, 0.26);
+  const petalIn = new Color(0.98, 0.98, 0.98);
+  const petalOut = new Color(0.86, 0.9, 0.98);
+  const leaf = new Color(0.44, 0.66, 0.34);
+
+  // stem: three tapered segments, slightly curved
+  let px = 0, pz = 0;
+  const w = 0.018;
+  for (let i = 0; i < 3; i++) {
+    const t0 = i / 3, t1 = (i + 1) / 3;
+    const y0 = t0 * 0.62, y1 = t1 * 0.62;
+    const x1 = 0.015 * t1 * t1;
+    const ww = w * (1 - t0 * 0.5);
+    b.tri3(px - ww, y0, pz, px + ww, y0, pz, x1, y1, 0, stemLo, stemLo, stemHi);
+    b.tri3(px + ww, y0, pz, x1 + ww * 0.5, y1, 0, x1, y1, 0, stemLo, stemHi, stemHi);
+    px = x1; pz = 0;
   }
-  const s = 0.09;
-  b.tri(-s, cy + 0.03, -s, s, cy + 0.03, -s, 0, cy + 0.12, s, heart);
+  // a pair of leaves low on the stem
+  b.tri3(0, 0.12, 0, 0.10, 0.24, 0.03, 0.02, 0.3, 0, leaf, leaf, stemHi);
+  b.tri3(0, 0.12, 0, 0.02, 0.3, 0, -0.09, 0.22, -0.02, leaf, stemHi, leaf);
+
+  const cy = 0.66;
+  const N = 6;
+  for (let i = 0; i < N; i++) {
+    const a0 = (i / N) * Math.PI * 2;
+    const a1 = ((i + 0.62) / N) * Math.PI * 2;
+    const a2 = ((i + 0.9) / N) * Math.PI * 2;
+    const r = 0.2;
+    const droop = 0.035;
+    b.tri3(0, cy, 0, Math.cos(a0) * r * 0.55, cy + 0.06, Math.sin(a0) * r * 0.55, Math.cos(a1) * r, cy - droop, Math.sin(a1) * r, petalIn, petalIn, petalOut);
+    b.tri3(0, cy, 0, Math.cos(a1) * r, cy - droop, Math.sin(a1) * r, Math.cos(a2) * r, cy - droop, Math.sin(a2) * r, petalIn, petalOut, petalOut);
+  }
+  // the heart sits a little proud of the petals
+  const s2 = 0.075;
+  b.tri3(-s2, cy + 0.03, -s2, s2, cy + 0.03, -s2, 0, cy + 0.09, s2, heart, heart, heart);
+  b.tri3(-s2, cy + 0.03, s2, 0, cy + 0.09, s2, -s2, cy + 0.03, -s2, heart, heart, heart);
   return b.build();
 }
 
@@ -158,15 +244,18 @@ function treeGeometry(): BufferGeometry {
 
     const tip = new Vector3().copy(from).addScaledVector(d, len);
     if (depth === 0) {
-      for (let i = 0; i < 3; i++) {
-        const r = 0.048 + hash01(key * 3 + i) * 0.028;
+      // a crown, not a bead: five overlapping clusters, the lower ones wider,
+      // the upper ones smaller and paler where they catch the light
+      for (let i = 0; i < 6; i++) {
+        const r = 0.055 + hash01(key * 3 + i) * 0.045;
+        const spread = i < 3 ? 0.055 : 0.1;
         const lump = new IcosahedronGeometry(r, 0);
         lump.translate(
-          tip.x + (hash01(key * 5 + i) - 0.5) * 0.09,
-          tip.y + (hash01(key * 7 + i) - 0.25) * 0.06,
-          tip.z + (hash01(key * 11 + i) - 0.5) * 0.09,
+          tip.x + (hash01(key * 5 + i) - 0.5) * spread,
+          tip.y + (hash01(key * 7 + i) - 0.3) * spread * 0.9,
+          tip.z + (hash01(key * 11 + i) - 0.5) * spread,
         );
-        part(lump, white, 0.24, key + i * 13);
+        part(lump, white, 0.3, key + i * 13);
         lump.dispose();
       }
       return;
@@ -211,11 +300,18 @@ function bendMaterial(material: MeshLambertMaterial, time: { value: number }): M
   return material;
 }
 
-const FLOWER_COLORS = [0xff6f91, 0xffc75f, 0xf9f871, 0xff9671, 0xd65db1, 0xffffff, 0x9bf6ff, 0xffadad];
-const LEAF = new Color(0x6fc45a);
-const LEAF_DRY = new Color(0x8f8a70);
-const GRASS_LUSH = new Color(0xa6e06a);
-const GRASS_DRY = new Color(0xc9b99a);
+const FLOWER_COLORS = [0xff7f9c, 0xffc75f, 0xf4e98a, 0xff9671, 0xd06fb8, 0xf6f2e4, 0x9fd8e8, 0xffb0a0];
+const LEAF = new Color(0x4f8a3e);
+const LEAF_DRY = new Color(0x8b8668);
+/**
+ * Turf is never one green. A meadow is moss in the shade, olive in the dry
+ * patches, and only the tips are lit. These two are the ends of a small range,
+ * and every tuft picks a place in it from its own hash.
+ */
+const GRASS_LUSH = new Color(0x6f9647);
+const GRASS_COOL = new Color(0x527f47);
+const GRASS_WARM = new Color(0x97984f);
+const GRASS_DRY = new Color(0x9c8f6b);
 
 const m4 = new Matrix4();
 const q = new Quaternion();
@@ -246,17 +342,17 @@ export class Foliage {
 
   constructor() {
     const mk = (geo: BufferGeometry, max: number, soft: boolean) => {
-      // blades and petals are lit as if they were the ground they grow from
-      // (normals straight up), so a meadow reads as one soft surface
-      if (soft) {
-        const nrm = geo.getAttribute('normal');
-        for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0);
-      }
+      // Grass keeps its own normals. Straightening them all upward made the
+      // meadow one flat green value; left alone, a blade has a lit side and a
+      // shade side, and a field of them gets the stipple that reads as turf.
       const mat = bendMaterial(
         soft ? new MeshLambertMaterial({ vertexColors: true, side: DoubleSide }) : new MeshLambertMaterial({ vertexColors: true, flatShading: true }),
         this.time,
       );
       const mesh = new InstancedMesh(geo, mat, max);
+      // the rim light belongs on rock and brass; on a blade it is the white
+      // fringe that made a meadow look like frost
+      mesh.userData.noRim = true;
       mesh.count = 0;
       mesh.frustumCulled = false;
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -310,15 +406,17 @@ export class Foliage {
       return [Math.cos(a) * r * island.rx, Math.sin(a) * r * island.rz];
     };
     let treesPlaced = 0;
-    const grassCount = Math.round(area * 62 * this.density);
+    const grassCount = Math.round(area * 300 * this.density);
     for (let i = 0; i < grassCount; i++) {
       const [lx, lz] = spot(0.95);
-      this.add('grass', view, lx, lz, 0.11 + rng() * 0.13, rng(), false);
+      // shorter toward the coast, taller in the lee of the middle
+      const c = Math.hypot(lx / island.rx, lz / island.rz);
+      this.add('grass', view, lx, lz, (0.085 + rng() * 0.10) * (0.85 + 0.3 * (1 - c)), rng(), false);
     }
     for (let i = 0; i < options.flowers; i++) {
       const [lx, lz] = spot(0.86);
       if (clear(lx, lz)) continue;
-      this.add('flower', view, lx, lz, 0.2 + rng() * 0.13, rng(), true, rng() * 0.5);
+      this.add('flower', view, lx, lz, 0.26 + rng() * 0.16, rng(), true, rng() * 0.5);
     }
     for (let i = 0; i < options.trees * 3 && treesPlaced < options.trees; i++) {
       // trees stand at the back of the island so they never hide the seed
@@ -376,7 +474,9 @@ export class Foliage {
       mesh[p.kind].setMatrixAt(i, m4);
       if (p.kind === 'grass') {
         col.copy(GRASS_DRY).lerp(GRASS_LUSH, lush);
-        shade(col, col, (p.hue - 0.5) * 0.3);
+        // every tuft sits somewhere between an olive and a moss green
+        col.lerp(p.hue > 0.5 ? GRASS_WARM : GRASS_COOL, Math.abs(p.hue - 0.5) * 0.7 * lush);
+        shade(col, col, (p.hue - 0.5) * 0.22);
       } else if (p.kind === 'flower') {
         col.setHex(FLOWER_COLORS[Math.floor(p.hue * FLOWER_COLORS.length) % FLOWER_COLORS.length]);
       } else if (p.hue >= 2) {

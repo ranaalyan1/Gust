@@ -158,11 +158,21 @@ const COMPOSITE_FRAG = /* glsl */ `
     sharp.g = texture2D(tScene, uv).g;
     sharp.b = texture2D(tScene, uv - fromCentre * fringe).b;
 
-    vec3 soft = texture2D(tDof, uv).rgb;
-    vec3 colour = mix(sharp, soft, coc);
+    // A touch of unsharp mask, on the sharp plate only. A lens is not a blur;
+    // it resolves an edge, and a hair of extra contrast at the high frequencies
+    // is most of why a photograph reads as crisper than the same render.
+    vec2 texel = 1.0 / uRes;
+    vec3 n1 = texture2D(tScene, uv + vec2(texel.x, 0.0)).rgb;
+    vec3 n2 = texture2D(tScene, uv - vec2(texel.x, 0.0)).rgb;
+    vec3 n3 = texture2D(tScene, uv + vec2(0.0, texel.y)).rgb;
+    vec3 n4 = texture2D(tScene, uv - vec2(0.0, texel.y)).rgb;
+    vec3 crisp = sharp + (sharp - (n1 + n2 + n3 + n4) * 0.25) * 0.22;
 
-    // halation
-    colour += texture2D(tBloom, uv).rgb * uBloom;
+    vec3 soft = texture2D(tDof, uv).rgb;
+    vec3 colour = mix(mix(sharp, crisp, 0.7), soft, coc);
+
+    // halation: warm, because the light in this room is
+    colour += texture2D(tBloom, uv).rgb * uBloom * vec3(1.0, 0.88, 0.76);
 
     // exposure, film curve
     colour *= uExposure;
@@ -176,16 +186,17 @@ const COMPOSITE_FRAG = /* glsl */ `
     float filmLuma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
     colour = mix(colour, colour * vec3(0.90, 0.97, 1.10), 1.0 - smoothstep(0.0, 0.42, filmLuma));
     colour = colour * colour * (3.0 - 2.0 * colour) * 0.30 + colour * 0.70;
-    colour = colour * 0.955 + vec3(0.014, 0.012, 0.011);
+    colour = colour * 0.958 + vec3(0.020, 0.017, 0.015);
 
     // vignette: a real lens loses light at the corners, and so does a desk
     // seen across its own shadow
     colour *= mix(1.0, smoothstep(1.15, 0.25, radius), uVignette);
 
-    // grain, heavier in the shadows than in the highlights, like film
+    // grain, heavier in the shadows than in the highlights, like film — and
+    // fine enough to be texture rather than noise
     float g = hash(uv * uRes + fract(uTime) * 91.7) - 0.5;
     float luma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
-    colour += g * uGrain * (1.0 - luma * 0.7);
+    colour += g * uGrain * (1.0 - luma * 0.85) * 0.9;
 
     // A lens does not stay clean with a bare bulb in frame.
     //
@@ -273,7 +284,7 @@ export class Post {
   ) {
     this.sceneRoot = scene;
     this.strength = opts.strength ?? 1;
-    this.blurPx = opts.blurPx ?? 1.25;
+    this.blurPx = opts.blurPx ?? 1.1;
     this.debug = opts.debug ?? 0;
 
     const geo = new PlaneGeometry(2, 2);
@@ -309,12 +320,12 @@ export class Post {
         tBloom: { value: null },
         uRes: { value: new Vector2(1, 1) },
         uFocusY: { value: 0.54 },
-        uBand: { value: 0.105 },
+        uBand: { value: 0.132 },
         uTilt: { value: 0.55 },
-        uBloom: { value: 0.42 * this.strength },
-        uExposure: { value: 1.06 },
-        uVignette: { value: 0.55 * this.strength },
-        uGrain: { value: 0.022 * this.strength },
+        uBloom: { value: 0.52 * this.strength },
+        uExposure: { value: 1.2 },
+        uVignette: { value: 0.42 * this.strength },
+        uGrain: { value: 0.0075 * this.strength },
         uTime: { value: 0 },
         uLamp: { value: new Vector3(0, 0, 0) },
         uLampOn: { value: 0 },

@@ -29,6 +29,7 @@ import {
   Vector3,
 } from '@iwsdk/core';
 import type { HandSample } from '../core/hands.js';
+import type { Course } from '../core/course.js';
 import { hash01 } from '../core/random.js';
 import { blobShadowMaterial } from './blob.js';
 
@@ -61,11 +62,15 @@ export class PalmMarker {
     this.disc = new Mesh(new CircleGeometry(size, 20), this.discMat);
     this.ring = new Mesh(new RingGeometry(size * 0.93, size * 1.04, 28), this.ringMat);
     // a faint cone of "breath" along the palm normal: this is where the wind goes
-    const cone = new ConeGeometry(size * 1.1, size * 3.0, 14, 1, true);
-    cone.translate(0, -size * 1.5, 0);
+    // Sized to the palm, not to the room: the first attempt was three palms
+    // long and read as a searchlight hanging in the air.
+    const cone = new ConeGeometry(size * 0.42, size * 1.25, 18, 1, true);
+    cone.translate(0, -size * 0.62, 0);
     cone.rotateX(-Math.PI / 2); // apex at the palm, opening along +z
     this.breath = new Mesh(cone, this.breathMat);
-    this.group.add(this.disc, this.ring);
+    // The cone was built and never added: a dead mesh, and the marker lost the
+    // one thing that says which way the hand is pushing the air.
+    this.group.add(this.disc, this.ring, this.breath);
     this.group.visible = false;
     this.group.renderOrder = 35;
   }
@@ -84,8 +89,8 @@ export class PalmMarker {
     const e = Math.min(1, strength / 7);
     this.discMat.opacity = (0.1 + 0.22 * e) * this.level;
     this.ringMat.opacity = (0.5 + 0.5 * e) * this.level;
-    this.breathMat.opacity = (0.03 + 0.1 * e) * this.level;
-    this.breath.scale.set(1, 1, 0.55 + 0.9 * e);
+    this.breathMat.opacity = (0.02 + 0.05 * e) * this.level;
+    this.breath.scale.set(1, 1, 0.6 + 0.7 * e);
   }
 }
 
@@ -299,15 +304,18 @@ export class ThermalColumn {
     this.height = height;
     this.material = new MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, fog: false });
     this.shell = softLightMaterial(color, 2.2, true);
-    const shell = new Mesh(new CylinderGeometry(radius * 0.8, radius * 0.55, height, 20, 1, true), this.shell);
+    const shell = new Mesh(new CylinderGeometry(radius * 0.8, radius * 0.55, height, 44, 1, true), this.shell);
     shell.position.y = height / 2;
     this.group.add(shell);
-    for (let i = 0; i < 3; i++) {
-      const ring = new Mesh(new TorusGeometry(radius * 0.72, 0.012, 4, 20), this.material);
-      ring.rotation.x = Math.PI / 2;
-      this.rings.push(ring);
-      this.group.add(ring);
-    }
+    // One soft ring where the column meets the ground. The three travelling
+    // rings that used to be here read, at diorama scale, as grey wire scribbles
+    // floating in the case; a thermal is a column of warm air, and warm air has
+    // no edges.
+    const foot = new Mesh(new RingGeometry(radius * 0.5, radius * 0.86, 32), this.material);
+    foot.rotation.x = -Math.PI / 2;
+    foot.position.y = 0.01;
+    this.rings.push(foot);
+    this.group.add(foot);
     this.group.renderOrder = 18;
     this.group.visible = false;
   }
@@ -318,12 +326,9 @@ export class ThermalColumn {
     this.group.position.set(x, y, z);
     this.material.opacity = 0.035 * level;
     this.shell.uniforms.uOpacity.value = 0.010 * level;
-    for (let i = 0; i < this.rings.length; i++) {
-      const t = (time * 0.42 + i / this.rings.length) % 1;
-      this.rings[i].position.y = t * this.height;
-      const sc = 0.75 + 0.45 * t;
-      this.rings[i].scale.set(sc, sc, 1);
-    }
+    // the foot breathes with the column rather than travelling up it
+    const pulse = 1 + 0.06 * Math.sin(time * 1.7);
+    for (const ring of this.rings) ring.scale.set(pulse, pulse, 1);
   }
 }
 
@@ -552,5 +557,73 @@ export class Birds {
       p[j + 15] = tx; p[j + 16] = b.y; p[j + 17] = tz;
     }
     this.geometry.attributes.position.needsUpdate = true;
+  }
+}
+
+
+/**
+ * FLOATING DEBRIS
+ *
+ * The gap between two islands in a specimen case is the emptiest part of the
+ * picture, and an empty gap is what makes a diorama look like two objects on a
+ * shelf. A dozen shards of the same rock the islands are made of, hanging in the
+ * air around the flight line — some with moss on top, all of them turning very
+ * slowly — say that this is a place with weather and geology in it, and that the
+ * islands are pieces of something larger.
+ *
+ * Everything is built once per course and one group is rotated per frame.
+ */
+export function buildDebris(course: Course): Group {
+  const g = new Group();
+  const span = Math.abs(course.goal.center.x - course.dandelion.x) + 2.4;
+  const cx = (course.goal.center.x + course.dandelion.x) * 0.5;
+  const cy = (course.goal.center.y + course.dandelion.y) * 0.5;
+  const n = 16;
+  for (let i = 0; i < n; i++) {
+    const h = (k: number) => hash01(course.goal.id * 97 + i * 23 + k);
+    const a = h(1) * Math.PI * 2;
+    const r = 0.9 + h(2) * span * 0.62;
+    const x = cx + Math.cos(a) * r;
+    const z = Math.sin(a) * (0.7 + h(3) * 1.4);
+    const y = cy + (h(4) - 0.42) * 3.4;
+    const size = 0.045 + h(5) * 0.085;
+    const geo = new IcosahedronGeometry(size, 0);
+    const pos = geo.getAttribute('position') as BufferAttribute;
+    for (let k = 0; k < pos.count; k++) {
+      const f = 0.6 + hash01(course.goal.id + i * 31 + k) * 0.9;
+      pos.setXYZ(k, pos.getX(k) * f * 1.3, pos.getY(k) * f * 0.9, pos.getZ(k) * f * 1.15);
+    }
+    geo.computeVertexNormals();
+    const moss = h(6) > 0.45;
+    const rock = new Color().setRGB(0.32, 0.27, 0.23).lerp(new Color().setRGB(0.12, 0.14, 0.09), moss ? 0.25 : 0.6);
+    if (moss) rock.lerp(new Color().setRGB(0.24, 0.34, 0.16), 0.45 + h(7) * 0.3);
+    const m = new Mesh(
+      geo,
+      new MeshLambertMaterial({ color: rock, flatShading: true, transparent: true, opacity: 0.0, depthWrite: false }),
+    );
+    m.position.set(x, y, z);
+    m.rotation.set(h(8) * 6.28, h(9) * 6.28, h(10) * 6.28);
+    m.userData.spin = (h(11) - 0.5) * 0.12;
+    m.userData.baseY = y;
+    m.userData.phase = h(12) * 6.28;
+    m.userData.fade = 0.72 + h(13) * 0.28;
+    m.castShadow = false;
+    m.receiveShadow = false;
+    g.add(m);
+  }
+  g.name = 'debris';
+  return g;
+}
+
+/** Bob, turn and fade the debris in. Cheap: one matrix per shard, no allocation. */
+export function updateDebris(g: Group, dt: number, time: number, reveal: number): void {
+  for (const child of g.children) {
+    const d = child.userData as { spin?: number; baseY?: number; phase?: number; fade?: number };
+    if (d.spin === undefined) continue;
+    child.rotation.y += d.spin! * dt;
+    child.rotation.x += d.spin! * dt * 0.4;
+    child.position.y = (d.baseY ?? 0) + Math.sin(time * 0.5 + (d.phase ?? 0)) * 0.06;
+    const mat = (child as Mesh).material as MeshLambertMaterial;
+    mat.opacity = Math.min(1, reveal) * (d.fade ?? 1);
   }
 }

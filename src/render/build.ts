@@ -24,6 +24,23 @@ export class FlatBuilder {
     }
   }
 
+  /**
+   * One triangle with a colour per vertex. A blade of grass is dark where it
+   * leaves the soil and pale where it meets the light; flat colour per triangle
+   * cannot say that, and the difference between a spike and a plant is mostly
+   * that gradient.
+   */
+  tri3(
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    cx: number, cy: number, cz: number,
+    ca: Color, cb: Color, cc: Color,
+  ): void {
+    this.positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+    this.colors.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+    this.colors2.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+  }
+
   build(withSecond = false): BufferGeometry {
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(this.positions, 3));

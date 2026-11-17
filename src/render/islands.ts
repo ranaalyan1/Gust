@@ -22,15 +22,21 @@ import { type Island, type Obstacle, islandBottom, islandRim, islandTop } from '
 import { hash01 } from '../core/random.js';
 import { FlatBuilder, shade } from './build.js';
 
-const RINGS = 8;
-const SEGS = 46;
+const RINGS = 12;
+const SEGS = 62;
 
-const GRASS = new Color(0x51603a);
-const GRASS_2 = new Color(0x66743f);
-const DRY = new Color(0x9c8a6a);
-const DRY_2 = new Color(0x84765c);
-const EARTH = new Color(0x5a3d2b);
+const GRASS = new Color(0x4c6234);
+const GRASS_2 = new Color(0x6a7f42);
+const DRY = new Color(0x9c8a63);
+const DRY_2 = new Color(0x7d7150);
+const EARTH = new Color(0x51362a);
 const ROCK = new Color(0x6a5f5e);
+/** The pale, dry lip where turf gives way to rock, all the way round. */
+const COAST = new Color(0x8e7c5c);
+/** Sunlit crowns, and the damp hollows between them. */
+const CROWN = new Color(0x86a355);
+const CROWN_DRY = new Color(0xa89a70);
+const HOLLOW = new Color(0x36462a);
 /**
  * Beds. Rock is laid down in courses, and courses are what the eye counts on
  * the underside of a floating island. Colour only: the silhouette is already
@@ -50,7 +56,7 @@ const MOSS_DARK = new Color(0x36441f);
 /** Lichen: the pale crust that takes the windward face and nothing else. */
 const CRUST = new Color(0x9aa187);
 const BARE = new Color(0x6b573f);
-const STONE = new Color(0x6f6660);
+const STONE = new Color(0x77695b);
 
 const c1 = new Color();
 const c2 = new Color();
@@ -97,7 +103,19 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
   // local-space sample helpers (the mesh is positioned at the island centre)
   const px = (c: number, th: number) => c * islandRim(island, th) * island.rx * Math.cos(th);
   const pz = (c: number, th: number) => c * islandRim(island, th) * island.rz * Math.sin(th);
-  const top = (c: number, th: number) => islandTop(island, cx + px(c, th), cz + pz(c, th), c) - island.center.y;
+  /**
+   * Visual height of the turf. The collision surface is analytic; this adds a
+   * hand's-width of undulation — hummocks and the dip where water would run —
+   * because a flat-shaded disc with grass on it still reads as a disc.
+   */
+  const topOf = (c: number, th: number) => islandTop(island, cx + px(c, th), cz + pz(c, th), c) - island.center.y;
+  const top = (c: number, th: number) => {
+    const base = topOf(c, th);
+    if (c > 0.985) return base;
+    const bump = Math.sin(th * 5.0 + island.shapeSeed * 2.3) * Math.cos(c * 6.4 + island.shapeSeed) * 0.010
+      + Math.sin(th * 11.0 + 1.7) * 0.005;
+    return base + bump * Math.min(1, c * 2.2);
+  };
   const bot = (c: number, th: number) => islandBottom(island, cx + px(c, th), cz + pz(c, th), c) - island.center.y;
   const rnd = (i: number, j: number, k: number) => hash01(island.shapeSeed * 3 + i * 131 + j * 17 + k);
 
@@ -123,7 +141,7 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
   for (let s = 0; s < SEGS; s++) {
     const ta = (s / SEGS) * Math.PI * 2;
     const tb = ((s + 1) / SEGS) * Math.PI * 2;
-    // ── top: grass, with an earthy lip at the coast ──
+    // ── top: grass, with a pale sandy lip and a ragged edge at the coast ──
     for (let r = 0; r < RINGS; r++) {
       const ca = Math.pow(r / RINGS, 0.8);
       const cb = Math.pow((r + 1) / RINGS, 0.8);
@@ -134,34 +152,68 @@ export function buildIslandView(island: Island, lush: boolean): IslandView {
       const pzw = pz((ca + cb) * 0.5, (ta + tb) * 0.5);
       const seedA = hash01(island.shapeSeed + 31) * 6.283;
       const seedB = hash01(island.shapeSeed + 37) * 6.283;
-      const patch = Math.sin(pxw * 7.3 + seedA) * Math.cos(pzw * 6.1 + seedB) + 0.5 * Math.sin((pxw - pzw) * 3.7);
-      const bare = Math.max(0, patch - 0.55) * 0.8;
-      const moss = Math.max(0, -patch - 0.35) * 0.9;
+      // two scales of patch: broad moss/shade zones, and the finer mottling a
+      // hand's width across that stops a field reading as one printed green
+      const patch = Math.sin(pxw * 9.3 + seedA) * Math.cos(pzw * 8.1 + seedB)
+        + 0.5 * Math.sin((pxw - pzw) * 5.7)
+        + 0.32 * Math.sin(pxw * 21.0 + seedB) * Math.cos(pzw * 18.0 + seedA);
+      const bare = Math.max(0, patch - 0.5) * 0.9;
+      const moss = Math.max(0, -patch - 0.3) * 1.05;
       const coast = r === RINGS - 1;
       shade(c2, v > 0.5 ? GRASS : GRASS_2, (v - 0.5) * 0.22);
       shade(c1, v > 0.5 ? DRY : DRY_2, (v - 0.5) * 0.18);
       if (coast) {
-        c2.lerp(EARTH, 0.55);
-        c1.lerp(EARTH, 0.35);
+        // a thin band of dry sand, then soil: the eye reads a coastline as a
+        // sequence of materials, not as one green edge
+        c2.lerp(COAST, 0.75);
+        c1.lerp(COAST, 0.5);
+      } else if (r === RINGS - 2) {
+        c2.lerp(COAST, 0.18);
+        c1.lerp(COAST, 0.12);
       }
       // and the patches, before the coast takes over
       c2.lerp(MOSS_DARK, Math.min(0.55, moss));
       c1.lerp(BARE, Math.min(0.5, bare));
-      quad(top, ca, cb, ta, tb, c1.clone(), c2.clone(), false);
+      // Form. A slope facing the light is a stop brighter than a hollow, and a
+      // crown of turf catches the sky; without this the top of an island is one
+      // value whatever shape it is, which is why it read as a painted plate.
+      const rise = top((ca + cb) * 0.5, (ta + tb) * 0.5) - top(0.02, 0);
+      const crown = Math.max(-1, Math.min(1, rise * 6.5));
+      c2.lerp(CROWN, Math.max(0, crown) * 0.30);
+      c2.lerp(HOLLOW, Math.max(0, -crown) * 0.42);
+      c1.lerp(CROWN_DRY, Math.max(0, crown) * 0.22);
+      c1.lerp(HOLLOW, Math.max(0, -crown) * 0.3);
+      // the coastline is not an ellipse: break the rim outward and back in,
+      // by about a hand's width, in long wavelengths
+      const wobble = coast ? 1 + (Math.sin(ta * 3.0 + island.shapeSeed) * 0.045 + Math.sin(ta * 7.0 + 1.7) * 0.025) : 1;
+      quad(top, ca * wobble, cb * wobble, ta, tb, c1.clone(), c2.clone(), false);
     }
-    // ── cliff band ──
+    // ── cliff: turf lip, soil, then the rock it all stands on ──
+    //
+    // One band reads as the side of a coin. Three bands — turf overhanging a
+    // pale soil lip, the lip overhanging the first course of stone, stone
+    // stepping back into the dark — read as a piece of ground that was lifted
+    // out of the world with everything still attached.
     {
-      const ax = px(1, ta), az = pz(1, ta), bx = px(1, tb), bz = pz(1, tb);
-      shade(c1, EARTH, (rnd(s, 40, 2) - 0.5) * 0.25);
-      c1.lerp(STRATA[0], 0.35);
-      if (hash01(island.shapeSeed + s * 53) > 0.72) c1.lerp(CRUST, 0.35);
-      const col = c1.clone();
-      // The crust overhangs the rock it is made of. That, more than any amount
-      // of noise on the coastline, is what stops an island reading as a coin
-      // with a shadow under it.
-      const k = 1.045;
-      b.tri(ax, top(1, ta), az, bx, top(1, tb), bz, ax * k, bot(1, ta) - 0.02, az * k, col);
-      b.tri(bx, top(1, tb), bz, bx * k, bot(1, tb) - 0.02, bz * k, ax * k, bot(1, ta) - 0.02, az * k, col);
+      const bands = [
+        { k: 1.052, dy: 0.0, drop: 0.028, col: COAST, mix: 0.35 },
+        { k: 1.018, dy: 0.026, drop: 0.055, col: STRATA[1], mix: 0.55 },
+        { k: 0.986, dy: 0.05, drop: 0.06, col: STRATA[3], mix: 0.7 },
+      ];
+      for (let band = 0; band < bands.length; band++) {
+        const bb = bands[band];
+        const wob = 1 + (Math.sin(ta * 2.0 + island.shapeSeed + band) * 0.03 + Math.sin(ta * 5.0 + band * 2.1) * 0.02);
+        const ax = px(1, ta) * wob, az = pz(1, ta) * wob;
+        const bx = px(1, tb) * wob, bz = pz(1, tb) * wob;
+        const yTop = top(1, ta) - bb.dy;
+        const yBotA = bot(1, ta) - 0.02 - bb.drop;
+        c1.copy(EARTH).lerp(bb.col, bb.mix);
+        if (hash01(island.shapeSeed + s * 53 + band * 7) > 0.7) c1.lerp(CRUST, 0.22);
+        shade(c1, c1, (rnd(s, 40 + band, 2) - 0.5) * 0.22);
+        const col = c1.clone();
+        b.tri(ax, yTop, az, bx, top(1, tb) - bb.dy, bz, bx * bb.k, yBotA, bz * bb.k, col);
+        b.tri(ax, yTop, az, bx * bb.k, yBotA, bz * bb.k, ax * bb.k, yBotA, az * bb.k, col);
+      }
     }
     // ── underside: craggy rock tapering to a point ──
     const UNDER = 6;
@@ -261,7 +313,7 @@ export function updateBloom(view: IslandView, dt: number, speed = 1.5): void {
 }
 
 const MOSS = new Color(0x556b3e);
-const LICHEN = new Color(0x9a9282);
+const LICHEN = new Color(0x968a72);
 
 /**
  * Stone obstacles: the storm gate's slabs and the spires. A collision box is a
@@ -300,8 +352,12 @@ export function buildObstacle(o: Obstacle, key: number): Mesh {
     let k = 1 - h * 0.07;
     let ny = y * (1 - h * 0.03);
     if (role !== 0) {
-      // t: 0 on the face the seed flies past, 1 at the far tip
-      const t = role < 0 ? (1 - v) * 0.5 : (1 + v) * 0.5;
+      // t: 0 on the face the seed flies past, 1 at the far tip.
+      //
+      // Clamped, because a vertex a float's width above the box took v past 1,
+      // made t negative, and `pow(t, 1.6)` of a negative number is NaN — which
+      // quietly deleted a third of the storm gate's back wall.
+      const t = Math.max(0, Math.min(1, role < 0 ? (1 - v) * 0.5 : (1 + v) * 0.5));
       k = 1 - 0.62 * Math.pow(t, 1.6) - h * 0.1 * (0.3 + t);
       // strata: ledges step in and out a little
       k -= 0.05 * (Math.sin(v * 9 + key) > 0.3 ? 1 : 0) * t;
@@ -319,11 +375,26 @@ export function buildObstacle(o: Obstacle, key: number): Mesh {
     const h = hash01(key * 3 + i * 11);
     const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
     const up = (nrm.getY(i) + nrm.getY(i + 1) + nrm.getY(i + 2)) / 3;
-    c1.copy(STONE).lerp(ROCK_DEEP, 0.35 - 0.35 * Math.min(1, Math.max(-1, y / hy)));
-    // bands of paler stone
-    if (Math.sin((y / hy) * 7 + key * 1.3) > 0.55) c1.lerp(LICHEN, 0.22);
-    // anything that faces the sky gathers moss
-    if (up > 0.6) c1.lerp(MOSS, 0.35 + 0.35 * h);
+    // stone is laid in courses: a warm bed, a pale bed, a dark seam. The
+    // colour follows y rather than the face, so the bands run round the rock
+    // the way sediment does.
+    const course = (y / Math.max(0.001, hy)) * 3.4 + key * 0.7;
+    const bed = Math.floor(course);
+    if (bed % 3 === 0) c1.copy(STONE).lerp(LICHEN, 0.18);
+    else if (bed % 3 === 1) c1.copy(STONE).lerp(ROCK_DEEP, 0.28);
+    else c1.copy(STONE).lerp(MOSS_DARK, 0.22);
+    c1.lerp(ROCK_DEEP, 0.34 - 0.34 * Math.min(1, Math.max(-1, y / hy)));
+    // wet, shaded rock under an overhang: the underside stays cold and dark
+    if (up < -0.35) c1.lerp(new Color(0.10, 0.12, 0.11), 0.45);
+    // anything that faces the sky gathers moss — but only out in the weather.
+    // The floor of the storm gate was turning mint green because it, too, faces
+    // up; a walked stone floor wears smooth instead.
+    if (up > 0.6) {
+      if (y > 1.4) c1.lerp(MOSS, 0.35 + 0.35 * h);
+      else c1.lerp(STONE, 0.25).lerp(LICHEN, 0.12 + 0.1 * h);
+    }
+    // a hairline of dark in the seams between courses
+    if (Math.abs(course - Math.round(course)) < 0.06) c1.lerp(ROCK_DEEP, 0.4);
     shade(c1, c1, (h - 0.5) * 0.24);
     for (let j = 0; j < 3; j++) {
       colors[(i + j) * 3] = c1.r;

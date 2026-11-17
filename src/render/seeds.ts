@@ -25,13 +25,15 @@ import {
   Points,
   Quaternion,
   ShaderMaterial,
+  Sprite,
+  SpriteMaterial,
   Vector3,
 } from '@iwsdk/core';
 import type { Seed } from '../core/seed.js';
 import type { Course } from '../core/course.js';
 import { islandTop } from '../core/terrain.js';
 import { FlatBuilder } from './build.js';
-import { blobShadowMaterial } from './blob.js';
+import { blobShadowMaterial, blobTexture } from './blob.js';
 
 export const MAX_SEEDS = 48;
 
@@ -299,42 +301,99 @@ export function buildDandelion(course: Course): Group {
   const d = course.dandelion;
   const ground = islandTop(course.start, d.x, d.z);
   const h = d.y - ground;
-  const stemMat = new MeshLambertMaterial({ color: 0x6fae4a, flatShading: true });
-  // stem: three leaning segments
-  const segs = 4;
-  let px = 0.14, py = 0;
+  const burst = course.seedCount > 1;
+  const headY = burst ? h : h + course.headRadius - 0.12;
+  // the puff the seeds actually sit in: bigger than the anchor sphere, because
+  // a dandelion in seed is mostly air, and the air is the beautiful part
+  const puffR = Math.max(0.33, course.headRadius * 2.15);
+
+  const stemMat = new MeshLambertMaterial({ color: 0x77a24e, flatShading: true });
+  // stem: four leaning segments, thinner at the top
+  const segs = 5;
+  let px = 0.16, py = 0;
   for (let i = 0; i < segs; i++) {
     const t0 = i / segs, t1 = (i + 1) / segs;
-    const x1 = 0.14 * (1 - t1) * (1 - t1);
-    const y1 = (course.seedCount > 1 ? h : h + course.headRadius - 0.12) * t1;
+    const x1 = 0.16 * (1 - t1) * (1 - t1);
+    const y1 = headY * t1;
     const len = Math.hypot(x1 - px, y1 - py);
-    const seg = new Mesh(new CylinderGeometry(0.022 - 0.008 * t1, 0.026 - 0.008 * t0, len, 5, 1, true), stemMat);
+    const seg = new Mesh(new CylinderGeometry(0.055 - 0.018 * t1, 0.068 - 0.018 * t0, len, 8, 1, true), stemMat);
     seg.position.set((px + x1) / 2, (py + y1) / 2, 0);
     seg.rotation.z = Math.atan2(px - x1, y1 - py);
     g.add(seg);
     px = x1;
     py = y1;
   }
-  // leaves: a rosette of jagged blades at the base
+
+  // leaves: a rosette of long, toothed blades at the base
   const b = new FlatBuilder();
-  const leaf = new Color(0x4f9a3e), leaf2 = new Color(0x66b24c);
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * 6.283 + 0.3;
-    const L = 0.34 + (i % 2) * 0.1;
+  const leaf = new Color(0x4b8a3a), leaf2 = new Color(0x63a84c);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * 6.283 + 0.3;
+    const L = 0.42 + (i % 2) * 0.16;
     const cx = Math.cos(a), cz = Math.sin(a);
-    const sx = Math.cos(a + 1.57) * 0.07, sz = Math.sin(a + 1.57) * 0.07;
-    b.tri(0.14, 0.01, 0, 0.14 + cx * L * 0.55 + sx, 0.1, cz * L * 0.55 + sz, 0.14 + cx * L, 0.04, cz * L, i % 2 ? leaf : leaf2);
-    b.tri(0.14, 0.01, 0, 0.14 + cx * L, 0.04, cz * L, 0.14 + cx * L * 0.55 - sx, 0.1, cz * L * 0.55 - sz, i % 2 ? leaf2 : leaf);
+    const sx = Math.cos(a + 1.57) * 0.075, sz = Math.sin(a + 1.57) * 0.075;
+    const c = i % 2 ? leaf : leaf2;
+    // a blade with two teeth, bent down along its length
+    b.tri(0.16, 0.01, 0, 0.16 + cx * L * 0.5 + sx, 0.09, cz * L * 0.5 + sz, 0.16 + cx * L, 0.03, cz * L, c);
+    b.tri(0.16, 0.01, 0, 0.16 + cx * L, 0.03, cz * L, 0.16 + cx * L * 0.5 - sx, 0.09, cz * L * 0.5 - sz, c);
+    b.tri(0.16 + cx * L * 0.5 + sx, 0.09, cz * L * 0.5 + sz, 0.16 + cx * L * 0.92 + sx * 1.6, 0.10, cz * L * 0.92 + sz * 1.6, 0.16 + cx * L, 0.03, cz * L, c);
   }
   const leaves = new Mesh(b.build(), new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide }));
   g.add(leaves);
-  // receptacle
-  const head = new Mesh(
-    new IcosahedronGeometry(course.seedCount > 1 ? course.headRadius * 0.62 : 0.075, 1),
-    new MeshLambertMaterial({ color: 0xe9e2c4, flatShading: true }),
+
+  // ── the seed head ──
+  const core = new Mesh(
+    new IcosahedronGeometry(Math.max(0.055, course.headRadius * 0.5), 1),
+    new MeshLambertMaterial({ color: 0xd8cfa8, flatShading: true }),
   );
-  head.position.set(0, course.seedCount > 1 ? h : h + course.headRadius - 0.12, 0);
-  g.add(head);
+  core.position.set(0, headY, 0);
+  g.add(core);
+
+  // The pappus: a hundred fine filaments on a sphere, cream at the root and
+  // white at the tip. This is the thing the whole first act is about, so it gets
+  // real geometry rather than a sprite.
+  const puff = new FlatBuilder();
+  const rootC = new Color(0.86, 0.83, 0.70);
+  const tipC = new Color(1.0, 0.99, 0.94);
+  const N = 74;
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    // upper three quarters of the sphere, thinning underneath
+    const y = 1 - (i / (N - 1)) * 1.55;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const a = i * golden;
+    const dx = Math.cos(a) * r, dz = Math.sin(a) * r, dy = y;
+    const bx = dx * 0.05, by = headY + dy * 0.05, bz = dz * 0.05;
+    const tx = dx * puffR, ty = headY + dy * puffR * 0.92, tz = dz * puffR;
+    // a filament is a needle: wide at the root, a hair at the tip
+    const w = 0.0065;
+    const ux = -dz * w, uz = dx * w;
+    puff.tri3(bx - ux, by, bz - uz, bx + ux, by, bz + uz, tx, ty, tz, rootC, rootC, tipC);
+    // and a tiny fork at the end: the barbs that catch the air
+    puff.tri3(tx, ty, tz, tx + dx * 0.035 + ux * 2.4, ty + dy * 0.035, tz + dz * 0.035 + uz * 2.4, tx + dx * 0.05, ty + dy * 0.05, tz + dz * 0.05, tipC, tipC, tipC);
+  }
+  const puffMesh = new Mesh(
+    puff.build(),
+    new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide, transparent: true, opacity: 0.96 }),
+  );
+  g.add(puffMesh);
+
+  // a breath of light in the head, so the first thing the player sees in the
+  // case is the brightest thing in it
+  const glow = new Sprite(
+    new SpriteMaterial({
+      map: blobTexture(),
+      color: 0xffe9b8,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    }),
+  );
+  glow.position.set(0, headY, 0);
+  glow.scale.setScalar(puffR * 3.1);
+  g.add(glow);
+
   g.position.set(d.x, ground, d.z);
   return g;
 }

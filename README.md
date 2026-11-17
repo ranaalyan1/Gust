@@ -2,6 +2,8 @@
 
 **You don't move the seed. You move the air.**
 
+![The cabinet at dawn](docs/images/pass4-dawn.png)
+
 A bell jar on a walnut desk, one lamp, and a landscape 1:30 its real size: two
 islands, a dandelion, a seed that has been waiting for weather. Your hands are
 the weather. Sweep a palm past the seed and it lifts; cup both hands under it and
@@ -49,7 +51,10 @@ at an act. `?mute=1` silences audio. `?offline=1` never calls the mission API.
 mode. `?perf=1` shows fps, frame ms, draw calls and triangles; `?diag=1` adds the
 act, the quality tier, hand status and the time to the first pluck. `?flock=N`,
 `?seed=N`, `?speed=N`, `?keeper=NAME` and `?raw=1` (no post chain) are for
-testing and captures.
+testing and captures. `?debugscene=1` exposes the live system as
+`window.__gustSystem` (renderer, scene, game) for measurement; `?cam=x,y,z` and
+`?aim=x,y,z` park the desktop camera anywhere in the room; `?postdebug=N` shows
+one stage of the lens on its own.
 
 ## The Weather Mind
 

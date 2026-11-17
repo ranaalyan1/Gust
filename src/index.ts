@@ -12,12 +12,14 @@
  */
 import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { installChrome } from './boot/chrome.js';
 import { markOnce } from './boot/diag.js';
 import { installStartupGuard, showFallback } from './boot/guard.js';
 import { GustSystem } from './systems/gust.js';
 
 markOnce('boot');
 installStartupGuard();
+installChrome();
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
 

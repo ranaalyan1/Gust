@@ -101,7 +101,9 @@ export function dressScene(root: Object3D): void {
     // A few things (the cloud sea) opt out of receiving: air does not hold a
     // hard shadow, and faking one there looked like dirt.
     mesh.receiveShadow = mesh.userData.noShadowReceive !== true;
-    addRimLight(material);
+    // Foliage opts out: a fresnel rim on a blade is a white fringe, and a
+    // meadow with white fringes looks frostbitten rather than lit.
+    if (mesh.userData.noRim !== true) addRimLight(material);
   });
 }
 

@@ -6,6 +6,11 @@
  *
  *   WindStreaks  hundreds of weightless tracers advected by the field. Still
  *                air shows nothing; a sweep of the hand lights up a ribbon.
+ *                Each tracer is drawn as three soft beads strung along the
+ *                path it just travelled, brightest at the head. Line segments
+ *                were the first attempt: at diorama scale a one-pixel line is a
+ *                hair, and a thermal full of them read as scratches on the
+ *                glass rather than as moving air.
  *   Particles    a general pool of glowing motes (seed trails, bloom bursts,
  *                petals, fireflies, thermal embers).
  *   Rain         streaks that fall with the storm and slant with the wind.
@@ -20,10 +25,12 @@ import {
   LineSegments,
   NormalBlending,
   Points,
+  PointsMaterial,
   ShaderMaterial,
 } from '@iwsdk/core';
 import type { WindField } from '../core/wind.js';
 import { type Vec3, vec3 } from '../core/vec3.js';
+import { blobTexture } from './blob.js';
 
 const w: Vec3 = vec3();
 const wp: Vec3 = vec3();
@@ -43,7 +50,7 @@ export interface StreakSpawn {
 }
 
 export class WindStreaks {
-  readonly object: LineSegments;
+  readonly object: Points;
   private readonly n: number;
   private readonly head: Float32Array;
   private readonly tail: Float32Array;
@@ -52,6 +59,8 @@ export class WindStreaks {
   private readonly positions: Float32Array;
   private readonly colors: Float32Array;
   private readonly geometry = new BufferGeometry();
+  /** Beads per tracer: the comet's head plus two fainter beads down the tail. */
+  private static readonly BEADS = 3;
   /** Tint for player-made wind and for weather. */
   readonly handColor = new Color(0xffffff);
   readonly weatherColor = new Color(0xffd9a0);
@@ -62,22 +71,26 @@ export class WindStreaks {
     this.tail = new Float32Array(count * 3);
     this.life = new Float32Array(count);
     this.maxLife = new Float32Array(count);
-    this.positions = new Float32Array(count * 6);
-    this.colors = new Float32Array(count * 6);
+    const verts = count * WindStreaks.BEADS;
+    this.positions = new Float32Array(verts * 3);
+    this.colors = new Float32Array(verts * 3);
     const pa = new BufferAttribute(this.positions, 3);
     const ca = new BufferAttribute(this.colors, 3);
     pa.setUsage(DynamicDrawUsage);
     ca.setUsage(DynamicDrawUsage);
     this.geometry.setAttribute('position', pa);
     this.geometry.setAttribute('color', ca);
-    const material = new LineBasicMaterial({
+    const material = new PointsMaterial({
+      map: blobTexture(),
+      size: 0.009,
+      sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
       blending: AdditiveBlending,
       depthWrite: false,
-      fog: false,
+      toneMapped: false,
     });
-    this.object = new LineSegments(this.geometry, material);
+    this.object = new Points(this.geometry, material);
     this.object.frustumCulled = false;
     this.object.renderOrder = 20;
   }
@@ -122,7 +135,7 @@ export class WindStreaks {
   setDensity(fraction: number): void {
     this.density = Math.max(0, Math.min(1, fraction));
     const active = Math.round(this.n * this.density);
-    this.geometry.setDrawRange(0, active * 2);
+    this.geometry.setDrawRange(0, active * WindStreaks.BEADS);
   }
 
   private density = 1;
@@ -159,17 +172,18 @@ export class WindStreaks {
       const cr = wc.r + (hc.r - wc.r) * share;
       const cg = wc.g + (hc.g - wc.g) * share;
       const cb = wc.b + (hc.b - wc.b) * share;
-      const k = i * 6;
-      positions[k] = head[j];
-      positions[k + 1] = head[j + 1];
-      positions[k + 2] = head[j + 2];
-      positions[k + 3] = tail[j];
-      positions[k + 4] = tail[j + 1];
-      positions[k + 5] = tail[j + 2];
-      colors[k] = cr * a;
-      colors[k + 1] = cg * a;
-      colors[k + 2] = cb * a;
-      colors[k + 3] = colors[k + 4] = colors[k + 5] = 0; // tails fade to nothing
+      const B = WindStreaks.BEADS;
+      for (let k = 0; k < B; k++) {
+        const t = k / (B - 1); // 0 at the head, 1 at the far tail
+        const v = (i * B + k) * 3;
+        positions[v] = head[j] + (tail[j] - head[j]) * t;
+        positions[v + 1] = head[j + 1] + (tail[j + 1] - head[j + 1]) * t;
+        positions[v + 2] = head[j + 2] + (tail[j + 2] - head[j + 2]) * t;
+        const f = a * (1 - t * 0.85);
+        colors[v] = cr * f;
+        colors[v + 1] = cg * f;
+        colors[v + 2] = cb * f;
+      }
       if (speed < 0.25 && t < 0.8) life[i] -= dt * 3; // stale tracers recycle quickly
     }
     this.geometry.attributes.position.needsUpdate = true;

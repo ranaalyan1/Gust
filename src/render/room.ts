@@ -37,6 +37,7 @@ import {
   CanvasTexture,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   type Object3D,
   PlaneGeometry,
@@ -46,6 +47,7 @@ import {
   RGBAFormat,
   RepeatWrapping,
   ShaderMaterial,
+  SRGBColorSpace,
   SpotLight,
   Sprite,
   SpriteMaterial,
@@ -57,10 +59,12 @@ import {
 import { hash01 } from '../core/random.js';
 import type { SkyBlend } from '../core/game.js';
 import type { Journal } from '../core/journal.js';
-import { glassMaterial } from './glass.js';
+import { glassMaterial, setGlassEnvironment } from './glass.js';
 import { aimShaft, lightShaft } from './shaft.js';
 import { DeskMarks } from './marks.js';
 import { blobTexture } from './blob.js';
+import { CaseAtmosphere } from './atmosphere.js';
+import { FlatBuilder } from './build.js';
 
 /**
  * The world is a hand's width (two islands seven simulation metres apart at
@@ -270,6 +274,98 @@ function ringStain(): CanvasTexture {
   return stainTex;
 }
 
+/**
+ * A pressed fern, under glass, on the wall.
+ *
+ * Every naturalist's study has one, and it is the cheapest way to say that the
+ * room belongs to somebody with a subject: not a texture of a plant but a
+ * *specimen* — flattened, labelled, and a hundred years old. Drawn once on a
+ * canvas: a stem, two rows of pinnae, a hand-written caption.
+ */
+let plateTex: CanvasTexture | null = null;
+function botanicalPlate(): CanvasTexture {
+  if (plateTex) return plateTex;
+  const w = 512;
+  const h = 384;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext('2d')!;
+  // old paper: cream, foxed at the edges
+  g.fillStyle = '#e6dcc0';
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = Math.random() * 1.8 + 0.2;
+    const d = Math.hypot((x - w / 2) / w, (y - h / 2) / h);
+    g.fillStyle = `rgba(${120 + Math.random() * 40},${92 + Math.random() * 30},${60 + Math.random() * 30},${0.02 + d * 0.10})`;
+    g.beginPath();
+    g.arc(x, y, r, 0, 6.283);
+    g.fill();
+  }
+  // a printed hairline, inset
+  g.strokeStyle = 'rgba(70, 52, 34, 0.5)';
+  g.lineWidth = 1;
+  g.strokeRect(18, 18, w - 36, h - 36);
+
+  // the fern: a rachis and two rows of pinnae, in two greens so it reads as dried
+  const baseX = w * 0.5;
+  const baseY = h * 0.86;
+  const tipY = h * 0.16;
+  const sway = 18;
+  const spine = (t: number) => baseX + Math.sin(t * 2.2) * sway * t;
+  g.strokeStyle = 'rgba(64, 74, 38, 0.85)';
+  g.lineWidth = 3.4;
+  g.beginPath();
+  g.moveTo(baseX, baseY);
+  for (let i = 1; i <= 24; i++) {
+    const t = i / 24;
+    g.lineTo(spine(t), baseY + (tipY - baseY) * t);
+  }
+  g.stroke();
+  for (let i = 1; i < 20; i++) {
+    const t = i / 20;
+    const y = baseY + (tipY - baseY) * t;
+    const x = spine(t);
+    const len = (1 - t) * 105 + 18;
+    for (const side of [-1, 1]) {
+      g.strokeStyle = `rgba(${58 + i * 2}, ${78 + i * 2}, ${34 + i}, 0.72)`;
+      g.lineWidth = 2.1;
+      g.beginPath();
+      g.moveTo(x, y);
+      const ex = x + side * len * 0.86;
+      const ey = y - len * 0.34 - 6;
+      g.quadraticCurveTo(x + side * len * 0.5, y - len * 0.06, ex, ey);
+      g.stroke();
+      // leaflets: short hairs off each pinna
+      for (let k = 1; k < 5; k++) {
+        const u = k / 5;
+        g.lineWidth = 0.9;
+        g.beginPath();
+        const px = x + side * len * 0.86 * u;
+        const py = y - len * 0.34 * u * 0.9;
+        g.moveTo(px, py);
+        g.lineTo(px + side * 5, py - 7);
+        g.stroke();
+      }
+    }
+  }
+  // the collector's hand, in ink
+  g.fillStyle = 'rgba(52, 44, 34, 0.82)';
+  g.font = 'italic 15px Georgia, "Times New Roman", serif';
+  g.fillText('Dryopteris filix-mas  ·  coll. GUST', 34, h - 34);
+  g.font = '12px Georgia, "Times New Roman", serif';
+  g.fillStyle = 'rgba(52, 44, 34, 0.55)';
+  g.fillText('pl. IV', w - 70, h - 34);
+  plateTex = new CanvasTexture(canvas);
+  // a colour map is sRGB; without this the paper is read as linear and the
+  // plate comes out as a blown-out white card
+  plateTex.colorSpace = SRGBColorSpace;
+  plateTex.anisotropy = 4;
+  return plateTex;
+}
+
 const woodMaterial = (): MeshStandardMaterial =>
   // A waxed desk is glossy, and the gloss is a long, soft reflection of the
   // bulb. Roughness 0.62 turned the varnish into sandpaper and the whole top
@@ -292,7 +388,7 @@ const brassMaterial = (): MeshStandardMaterial =>
   // a white hoop — the bloom had nothing to eat but specular. Brass is a warm
   // metal with a broad, slightly broken highlight: 0.42 keeps the shine and
   // takes the neon out of it.
-  new MeshStandardMaterial({ map: brass(), color: 0xffffff, roughness: 0.42, metalness: 0.72 });
+  new MeshStandardMaterial({ map: brass(), color: 0xf3e2c2, roughness: 0.5, metalness: 0.8 });
 
 /* ── the room ────────────────────────────────────────────────────────────── */
 
@@ -302,6 +398,8 @@ export class Room {
   readonly marks: DeskMarks;
   /** Materials that need something to reflect. */
   private readonly shiny: MeshStandardMaterial[] = [];
+  /** Panes of glass that sample the room. */
+  private readonly glasses: ShaderMaterial[] = [];
   readonly lamp: SpotLight;
   private readonly bulb: PointLight;
   /** The bulb mesh, so the lens flare can be attached to a real position. */
@@ -316,6 +414,8 @@ export class Room {
   private readonly dustPos: Float32Array;
   private readonly dustSeeds: Float32Array;
   private readonly backdrop: Mesh;
+  /** The weather inside the jar: its own sky, its own sun, its own lights. */
+  readonly air: CaseAtmosphere;
 
   constructor() {
     this.inner.scale.setScalar(ROOM_K);
@@ -374,6 +474,7 @@ export class Room {
     // vessel rather than a hoop. The glass itself is hand-authored — see
     // glass.ts for why an env-mapped standard material turns into a milk jug.
     const glassMat = glassMaterial();
+    this.glasses.push(glassMat);
     // the bulb sits at a known point, so the reflection can be exactly there
     (glassMat.uniforms.uBulb.value as Vector3).set(lampBulbLocal.x, lampBulbLocal.y, lampBulbLocal.z);
     const wall = new Mesh(new CylinderGeometry(CASE_R, CASE_R * 1.005, CASE_H, 64, 1, true), glassMat);
@@ -524,7 +625,7 @@ export class Room {
         map: blobTexture(),
         color: 0xffce90,
         transparent: true,
-        opacity: 0.15,
+        opacity: 0.2,
         depthWrite: false,
         blending: AdditiveBlending,
       }),
@@ -534,6 +635,17 @@ export class Room {
     pool.position.set(-0.075, TABLE_Y + 0.0455, 0.015);
     pool.renderOrder = 1;
     this.inner.add(pool);
+
+    // ── the world's own sky ──
+    // The velvet is the floor of the jar and the brass collar its ceiling; the
+    // air between them is the specimen's weather. See atmosphere.ts.
+    this.air = new CaseAtmosphere({
+      radius: CASE_R * 0.972,
+      baseY: TABLE_Y + 0.0455,
+      collarY: TABLE_Y + CASE_H + 0.016,
+      domeRise: CASE_R * DOME * 0.965,
+    });
+    this.inner.add(this.air.group);
 
     // ── the lamp ──
     const lampX = -1.04;
@@ -601,7 +713,7 @@ export class Room {
 
     // one weak, warm wash behind the case: enough to see the room, not enough
     // to compete with the lamp
-    const wash = new PointLight(0xffb877, 0.75, 3.0 * ROOM_K, 1.3);
+    const wash = new PointLight(0xffb877, 0.9, 3.2 * ROOM_K, 1.3);
     wash.position.set(0.35, TABLE_Y + 0.5, -1.1);
     this.inner.add(wash);
 
@@ -675,10 +787,10 @@ export class Room {
     this.dust = new Points(
       dg,
       new PointsMaterial({
-        color: 0xffe6c0,
-        size: 0.0032,
+        color: 0xffd9a8,
+        size: 0.0024,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.24,
         depthWrite: false,
         blending: AdditiveBlending,
         sizeAttenuation: true,
@@ -860,9 +972,13 @@ export class Room {
     const lensGroup = new Group();
     const lensRing = new Mesh(new TorusGeometry(0.062, 0.0075, 10, 36), metal);
     lensGroup.add(lensRing);
-    const lensGlass = new Mesh(new CircleGeometry(0.06, 36), glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a }));
+    const lensMat = glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a });
+    this.glasses.push(lensMat);
+    const lensGlass = new Mesh(new CircleGeometry(0.06, 36), lensMat);
     lensGroup.add(lensGlass);
-    const lensGlass2 = new Mesh(new CircleGeometry(0.06, 36), glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a }));
+    const lensMat2 = glassMaterial({ rim: 0xa8bdc6, tint: 0x24503a });
+    this.glasses.push(lensMat2);
+    const lensGlass2 = new Mesh(new CircleGeometry(0.06, 36), lensMat2);
     lensGlass2.rotation.y = Math.PI;
     lensGroup.add(lensGlass2);
     const handle = new Mesh(new CylinderGeometry(0.0085, 0.0075, 0.19, 12), darkBrass);
@@ -874,6 +990,94 @@ export class Room {
     lensGroup.position.set(-0.63, TABLE_Y + 0.0075, 0.16);
     lensGroup.rotation.set(-Math.PI / 2 + 0.06, 0.2, 0.9);
     this.inner.add(lensGroup);
+
+    // ── the wall remembers the subject ──
+    // A framed pressed fern, hung a little crooked, between the shelves. The
+    // room is a study; a study has a subject on the wall.
+    {
+      const frameW = 0.4, frameH = 0.3;
+      const frameMat = new MeshStandardMaterial({ color: 0x2a211a, roughness: 0.62, metalness: 0.08 });
+      const frame = new Mesh(new BoxGeometry(frameW, frameH, 0.022), frameMat);
+      frame.position.set(-1.34, TABLE_Y + 0.5, -1.505);
+      frame.rotation.y = 0.06;
+      frame.castShadow = true;
+      this.inner.add(frame);
+      const matte = new Mesh(
+        new PlaneGeometry(frameW - 0.02, frameH - 0.02),
+        new MeshStandardMaterial({ color: 0x241d16, roughness: 0.95 }),
+      );
+      matte.position.set(frame.position.x, frame.position.y, frame.position.z + 0.0115);
+      matte.rotation.y = frame.rotation.y;
+      this.inner.add(matte);
+      const paper = new MeshStandardMaterial({ map: botanicalPlate(), color: 0x9c8e73, roughness: 0.94, metalness: 0 });
+      const mat = new Mesh(new PlaneGeometry(frameW - 0.03, frameH - 0.03), paper);
+      mat.position.set(frame.position.x, frame.position.y, frame.position.z + 0.0125);
+      mat.rotation.y = frame.rotation.y;
+      this.inner.add(mat);
+      // the glazing: a sheen of reflected light across the paper, never a blur
+      const glazing = new Mesh(
+        new PlaneGeometry(frameW - 0.03, frameH - 0.03),
+        new MeshBasicMaterial({ color: 0xbfd4dd, transparent: true, opacity: 0.05, depthWrite: false, blending: AdditiveBlending }),
+      );
+      glazing.position.set(mat.position.x, mat.position.y, mat.position.z + 0.002);
+      glazing.rotation.y = frame.rotation.y;
+      this.inner.add(glazing);
+    }
+
+    // ── the desk's working clutter, at the edge of the light ──
+    // An ink bottle with the quill still in it, and a brass tray of loose seed.
+    {
+      const bottle = new Group();
+      const body = new Mesh(new CylinderGeometry(0.036, 0.042, 0.05, 18), glassMaterial({ rim: 0xa8bdc6, tint: 0x1e3b2c }));
+      this.glasses.push((body.material as ShaderMaterial));
+      bottle.add(body);
+      const ink = new Mesh(new CylinderGeometry(0.031, 0.036, 0.036, 16), new MeshStandardMaterial({ color: 0x0e1220, roughness: 0.28, metalness: 0.1 }));
+      ink.position.y = -0.006;
+      bottle.add(ink);
+      const cap = new Mesh(new CylinderGeometry(0.024, 0.03, 0.014, 16), metal);
+      cap.position.y = 0.03;
+      bottle.add(cap);
+      // the quill: a spine with a vane, leaning out of the neck
+      const quill = new Group();
+      const spine = new Mesh(new CylinderGeometry(0.0028, 0.0016, 0.13, 6), new MeshStandardMaterial({ color: 0xe8dfc8, roughness: 0.8 }));
+      spine.position.y = 0.065;
+      quill.add(spine);
+      const vane = new FlatBuilder();
+      const vc = new Color(0.92, 0.9, 0.84);
+      const vc2 = new Color(0.78, 0.78, 0.74);
+      for (let i = 0; i < 6; i++) {
+        const t0 = 0.028 + i * 0.017;
+        const w0 = 0.016 * Math.sin(((i + 1) / 7) * Math.PI) + 0.003;
+        vane.tri3(0, t0, 0, -w0, t0 + 0.016, 0.002, 0, t0 + 0.022, 0, vc, vc2, vc);
+        vane.tri3(0, t0, 0, 0, t0 + 0.022, 0, w0 * 0.7, t0 + 0.016, -0.002, vc, vc, vc2);
+      }
+      const feather = new Mesh(vane.build(), new MeshLambertMaterial({ vertexColors: true, side: DoubleSide, flatShading: true }));
+      quill.add(feather);
+      quill.position.set(0, 0.028, 0);
+      quill.rotation.set(0.16, 0.4, 0.22);
+      bottle.add(quill);
+      bottle.position.set(0.92, TABLE_Y + 0.031, 0.36);
+      bottle.rotation.y = -0.5;
+      this.inner.add(bottle);
+
+      // a brass dish, a scatter of seed waiting to be tried
+      const dish = new Mesh(new CylinderGeometry(0.088, 0.078, 0.014, 28), darkBrass);
+      dish.position.set(-0.78, TABLE_Y + 0.014, 0.52);
+      this.inner.add(dish);
+      const dishRim = new Mesh(new TorusGeometry(0.088, 0.006, 6, 28), metal);
+      dishRim.rotation.x = Math.PI / 2;
+      dishRim.position.set(dish.position.x, TABLE_Y + 0.021, dish.position.z);
+      this.inner.add(dishRim);
+      const seedMat = new MeshStandardMaterial({ color: 0xc9b98d, roughness: 0.86 });
+      for (let i = 0; i < 14; i++) {
+        const a = hash01(i * 17 + 3) * 6.283;
+        const r = Math.sqrt(hash01(i * 19 + 5)) * 0.07;
+        const seed = new Mesh(new IcosahedronGeometry(0.0045 + hash01(i * 23) * 0.002, 0), seedMat);
+        seed.position.set(dish.position.x + Math.cos(a) * r, TABLE_Y + 0.024, dish.position.z + Math.sin(a) * r);
+        seed.rotation.set(hash01(i * 29) * 3, hash01(i * 31) * 3, 0);
+        this.inner.add(seed);
+      }
+    }
 
     // Everything casts. A single spot light and twelve shadow casters is not a
     // photograph; it is a product shot with the shadow switched off. The reason
@@ -918,14 +1122,17 @@ export class Room {
    * Give every metal and the glass a room to reflect. Without this, brass is a
    * diffuse ochre and glass is a grey film: metal is *only* its reflections.
    */
-  applyEnvironment(env: CubeTexture | Texture): void {
+  applyEnvironment(env: CubeTexture | Texture, room?: Texture): void {
     for (const m of this.shiny) {
       m.envMap = env;
-      // a 128px cube of one warm lamp is a strong light: keep it as a glint,
-      // not a second key light
-      m.envMapIntensity = 0.30;
+      // the prefiltered room is a real fill light: enough to give the brass a
+      // shape, not enough to become a second key
+      m.envMapIntensity = 0.45;
       m.needsUpdate = true;
     }
+    // Glass reflects the *unfiltered* room: a blurred environment turns the
+    // lamp into a smear, and the whole point of the panes is the lamp.
+    if (room) for (const g of this.glasses) setGlassEnvironment(g, room);
   }
 
   /** Lay a soft shadow on the desk, where something stands. */
@@ -977,6 +1184,7 @@ export class Room {
    */
   update(dt: number, origin: Vector3, sky: SkyBlend, time: number): void {
     this.group.position.copy(origin);
+    this.air.update(sky, time);
 
     // the pen: steps of ~0.22 s, so the eye reads writing rather than frames
     if (this.ink) {
@@ -1005,7 +1213,7 @@ export class Room {
     const flicker = sky.storm > 0.35 ? 1 - 0.1 * Math.abs(Math.sin(time * 11.3)) : 1;
 
     this.lamp.color.copy(c);
-    this.lamp.intensity = (0.95 + 0.55 * sky.golden + 0.22 * sky.dawn) * flicker;
+    this.lamp.intensity = (0.95 + 0.38 * sky.golden + 0.22 * sky.dawn) * flicker;
     this.bulb.color.copy(c);
     this.bulb.intensity = 0.75 * flicker;
     (this.glow.material as SpriteMaterial).color.copy(c);
@@ -1017,7 +1225,7 @@ export class Room {
     const ck = (0.42 + 0.30 * sky.golden + 0.12 * sky.dawn) * flicker;
     (this.causticDesk.material as MeshBasicMaterial).opacity = ck * 0.5;
     (this.causticDesk.material as MeshBasicMaterial).color.copy(c);
-    (this.causticBed.material as MeshBasicMaterial).opacity = ck * 0.62;
+    (this.causticBed.material as MeshBasicMaterial).opacity = ck * 0.2;
     (this.causticBed.material as MeshBasicMaterial).color.copy(c);
 
     // dust drifts on its own time, and only exists where the light is

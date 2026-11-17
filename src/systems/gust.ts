@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, CubeCamera, Group, LinearMipmapLinearFilter, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
+import { AdditiveBlending, Color, CubeCamera, Group, LinearMipmapLinearFilter, Matrix4, Mesh, PerspectiveCamera, Sprite, SpriteMaterial, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -44,6 +44,7 @@ import { PointerInput } from '../input/pointer.js';
 import { HAND_BONES, HAND_JOINTS, XRHands } from '../input/xrHands.js';
 import { GustAudio } from '../audio/audio.js';
 import { Sky } from '../render/sky.js';
+import { buildRoomEnvironment } from '../render/atmosphere.js';
 import { configureRenderer, configureSunShadows, dressScene } from '../render/look.js';
 import { Room } from '../render/room.js';
 import { Post } from '../render/post.js';
@@ -63,7 +64,8 @@ import { type IslandView, buildIslandView, buildObstacle, startBloom, updateBloo
 import { Foliage } from '../render/foliage.js';
 import { Particles, Rain, type StreakSpawn, WindStreaks } from '../render/air.js';
 import { SeedViews, buildDandelion } from '../render/seeds.js';
-import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalColumn, softLightMaterial } from '../render/extras.js';
+import { Birds, CloudSea, PalmMarker, PalmShadow, ShockRings, Sunbeam, ThermalColumn, buildDebris, softLightMaterial, updateDebris } from '../render/extras.js';
+import { blobTexture } from '../render/blob.js';
 
 /**
  * Simulation metres per real metre.
@@ -176,6 +178,9 @@ export class GustSystem extends createSystem({}) {
   private readonly thermals: ThermalColumn[] = [];
   private reliefColumn!: ThermalColumn;
   private breath!: Mesh;
+  /** Rock shards hanging around the flight line; one group, turned per frame. */
+  private debris: Group | null = null;
+  private debrisAge = 0;
   private readonly palms: [PalmMarker, PalmMarker] = [new PalmMarker(0xffffff, PALM), new PalmMarker(0xffffff, PALM)];
   private readonly hintPalms: [PalmMarker, PalmMarker] = [new PalmMarker(0xffd27a, PALM), new PalmMarker(0xffd27a, PALM)];
   /** The shadow each palm throws on the diorama, so hands feel like objects in the room. */
@@ -198,6 +203,20 @@ export class GustSystem extends createSystem({}) {
   private viewX = 0;
   private viewY = 1;
   private frameW = 6.2;
+  /**
+   * ?cam=x,y,z&aim=x,y,z parks the desktop camera at an exact spot. Captures
+   * for the docs need a repeatable frame, and a still photograph of one detail
+   * is worth a paragraph of description; the flag never exists in a session.
+   */
+  private readonly still = (() => {
+    const parse = (v: string | null) => {
+      if (!v) return null;
+      const n = v.split(',').map(Number);
+      return n.length === 3 && n.every(Number.isFinite) ? new Vector3(n[0], n[1], n[2]) : null;
+    };
+    const cam = parse(params.get('cam'));
+    return cam ? { cam, aim: parse(params.get('aim')) } : null;
+  })();
 
   // teaching + moods
   private idle = 0;
@@ -276,9 +295,16 @@ export class GustSystem extends createSystem({}) {
     this.world.createTransformEntity(this.room.group);
 
     // Brass and glass are nothing but their reflections, and a room has no HDR
-    // sky to borrow. Render the room into a small cube once, hand it to the
-    // metal, and never pay for it again.
+    // sky to borrow. Bake the room into a prefiltered environment once (see
+    // atmosphere.ts) and give it to the scene: every metal, every varnish and
+    // the glass now has something to reflect, and the case stops looking like
+    // painted plastic.
     {
+      const env = buildRoomEnvironment(this.renderer);
+      this.scene.environment = env;
+      this.scene.environmentIntensity = 0.72;
+      // and a second, *unfiltered* cube for the glass: a lamp reflected in a
+      // jar should still look like a lamp, not like a bright smear
       const cube = new WebGLCubeRenderTarget(128, { generateMipmaps: true, minFilter: LinearMipmapLinearFilter });
       const cubeCam = new CubeCamera(0.02, 8, cube);
       cubeCam.position.set(this.anchor.x, this.anchor.y - 0.01, this.anchor.z + 0.05);
@@ -287,7 +313,7 @@ export class GustSystem extends createSystem({}) {
       cubeCam.update(this.renderer, this.scene);
       this.room.group.visible = true;
       this.scene.remove(cubeCam);
-      this.room.applyEnvironment(cube.texture);
+      this.room.applyEnvironment(env, cube.texture);
     }
 
     this.foliage = new Foliage();
@@ -346,6 +372,7 @@ export class GustSystem extends createSystem({}) {
     this.pointer = new PointerInput(renderer.domElement);
     this.pointer.onFirstGesture = () => {
       this.audio.start();
+      if (typeof document !== 'undefined') document.body.classList.add('gust-playing');
       // the room has a voice, and it has been waiting for you to put your
       // hands on the desk
       if (!this.spokeEntry) {
@@ -368,6 +395,10 @@ export class GustSystem extends createSystem({}) {
     }
     this.cleanupFuncs.push(() => this.pointer.dispose());
     this.buildHud();
+    // ?debugscene=1 hangs the system off window for the capture scripts (see
+    // docs/ART_DIRECTION.md). It exposes the scene graph to devtools and to
+    // nothing else; no player ever sets it.
+    if (flag('debugscene')) (window as unknown as { __gustSystem?: GustSystem }).__gustSystem = this;
 
     this.birds.roost(this.game.course.goal.center.x, 2.6, -2.2);
     this.viewX = (this.game.course.dandelion.x + this.game.course.goal.center.x) * 0.5;
@@ -569,16 +600,21 @@ export class GustSystem extends createSystem({}) {
       // fills the frame and the ledger falls away at the bottom right.
       // The pointer nudges the eye a few millimetres, which is enough parallax
       // for the desk to read as a place with depth.
-      const eyeZ = this.anchor.z + 0.755;
-      cam.position.set(this.anchor.x + 0.05 + px * 0.02, this.anchor.y + 0.168 + py * 0.012, eyeZ);
-      // Off-centre, on purpose. A centred subject is a screenshot; a subject
-      // held in the left third, with the desk's working edge down the right, is
-      // a picture. The eye also looks a hand's width past the glass, at the
-      // shelf behind it, which drops the horizon into the top third.
-      cam.lookAt(this.anchor.x + 0.062, this.anchor.y + 0.034, this.anchor.z - 0.05);
-      // a degree of roll. Nobody holds a camera level, and the eye reads the
-      // lean long before it can name it.
-      cam.rotateZ(0.014);
+      const eyeZ = this.anchor.z + 0.635;
+      cam.position.set(this.anchor.x + 0.048 + px * 0.018, this.anchor.y + 0.188 + py * 0.011, eyeZ);
+      if (this.still) {
+        cam.position.copy(this.still.cam);
+        cam.lookAt(this.still.aim ?? new Vector3(this.anchor.x, this.anchor.y, this.anchor.z));
+      } else {
+        // Off-centre, on purpose. A centred subject is a screenshot; a subject
+        // held in the left third, with the desk's working edge down the right, is
+        // a picture. The eye also looks a hand's width past the glass, at the
+        // shelf behind it, which drops the horizon into the top third.
+        cam.lookAt(this.anchor.x + 0.055, this.anchor.y + 0.028, this.anchor.z - 0.045);
+        // a degree of roll. Nobody holds a camera level, and the eye reads the
+        // lean long before it can name it.
+        cam.rotateZ(0.014);
+      }
       void span;
     }
 
@@ -943,8 +979,8 @@ export class GustSystem extends createSystem({}) {
     const home = island.shapeSeed === HOME_SHAPE_SEED;
     const d = course.dandelion;
     this.foliage.populate(view, {
-      trees: home ? 1 : lush ? 2 : 2,
-      flowers: home ? 10 : 22,
+      trees: home ? 2 : lush ? 3 : 2,
+      flowers: home ? 28 : 34,
       // where this island's dandelion stands, or will stand once the seed has taken root
       keepClear: [isStart ? { x: d.x - island.center.x, z: d.z - island.center.z, r: 0.5 } : { x: island.rx * 0.38, z: 0, r: 0.5 }],
     });
@@ -956,6 +992,33 @@ export class GustSystem extends createSystem({}) {
     const g = new Group();
     course.terrain.obstacles.forEach((o, i) => g.add(buildObstacle(o, course.goal.id * 100 + i)));
     g.add(buildDandelion(course));
+    g.add(buildDebris(course));
+    // The storm gate is a shelter, and a shelter should look warm from outside:
+    // one soft light in the mouth of the tunnel, where the player is meant to
+    // steer the seed.
+    if (course.kind === 'tunnel') {
+      const roof = course.terrain.obstacles
+        .filter((o): o is Extract<typeof o, { kind: 'box' }> => o.kind === 'box' && o.center.y - o.half.y > 1.2)
+        .sort((a, b) => a.center.y - b.center.y)[0];
+      if (roof) {
+        const glow = new Sprite(
+          new SpriteMaterial({
+            map: blobTexture(),
+            color: 0xffcf96,
+            transparent: true,
+            opacity: 0.34,
+            depthWrite: false,
+            blending: AdditiveBlending,
+          }),
+        );
+        // The tunnel runs along x, so its mouths face the two islands. The warm
+        // light belongs in the middle of the passage, where both mouths and the
+        // camera can see it: a shelter, not a lamp hung outside the rock.
+        glow.position.set(roof.center.x, roof.center.y - roof.half.y + 0.55, roof.center.z + 0.1);
+        glow.scale.set(3.0, 1.9, 1);
+        g.add(glow);
+      }
+    }
     return g;
   }
 
@@ -1196,6 +1259,10 @@ export class GustSystem extends createSystem({}) {
 
     // ── islands and everything growing on them ──
     for (const view of this.islandViews.values()) updateBloom(view, dt, this.bloomSpeed);
+    if (this.debris) {
+      this.debrisAge += dt;
+      updateDebris(this.debris, dt, time, this.debrisAge * 0.7);
+    }
     this.foliage.update(field, dt, time, this.petal);
 
     // ── hands ──

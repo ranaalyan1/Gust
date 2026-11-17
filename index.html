@@ -3,57 +3,128 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <meta name="theme-color" content="#f2a184" />
+    <meta name="theme-color" content="#120f0c" />
     <meta name="description" content="GUST: your hands are the wind. Carry a dandelion seed across a living sky. Plays in a headset with hand tracking, or in any browser with a mouse or a finger." />
-    <meta property="og:title" content="GUST" />
+    <meta property="og:title" content="GUST — The Wind Cabinet" />
     <meta property="og:description" content="Your hands are the wind. Carry a dandelion seed across a living sky." />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f2a184'/%3E%3Cg stroke='%23fff' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M16 27V13M16 13 8 6M16 13l8-7M16 13V4M16 13 5 11M16 13l11-2'/%3E%3C/g%3E%3C/svg%3E"
     />
-    <title>GUST</title>
+    <title>GUST — The Wind Cabinet</title>
     <style>
+      :root {
+        --ink: #f5ecdf;
+        --brass: #d8b078;
+        --brass-dim: rgba(216, 176, 120, 0.42);
+      }
       html,
       body {
         margin: 0;
         height: 100%;
         overflow: hidden;
-        /* the dawn sky, so the very first frame is already the world */
-        background: linear-gradient(#27407e 0%, #c98a86 46%, #f2a184 58%, #7d6594 100%);
+        /* the room before the room exists: one lamp, a wall, and the dark */
+        background:
+          radial-gradient(ellipse 70% 55% at 26% 22%, rgba(255, 196, 128, 0.20), rgba(255, 196, 128, 0) 70%),
+          radial-gradient(ellipse 90% 90% at 50% 110%, #2a1d14 0%, #120f0c 45%, #080807 100%);
         -webkit-user-select: none;
         user-select: none;
         -webkit-tap-highlight-color: transparent;
         touch-action: none;
+        color: var(--ink);
       }
       #scene-container {
         position: fixed;
         inset: 0;
       }
+
+      /* ── the title ────────────────────────────────────────────────────── */
       #wordmark {
         position: fixed;
         left: 0;
         right: 0;
-        top: 15%;
+        top: 7.5%;
         text-align: center;
         pointer-events: none;
-        color: #fff;
-        font: 200 clamp(40px, 9vw, 92px) / 1 ui-rounded, 'Segoe UI', system-ui, sans-serif;
+        z-index: 4;
+        transition: opacity 2.2s cubic-bezier(0.4, 0, 0.2, 1), transform 2.2s cubic-bezier(0.4, 0, 0.2, 1),
+          filter 2.2s ease;
+      }
+      #wordmark .name {
+        display: block;
+        color: var(--ink);
+        font: 200 clamp(28px, 5.4vw, 58px) / 1 ui-rounded, "Segoe UI", system-ui, sans-serif;
+        letter-spacing: 0.62em;
+        text-indent: 0.62em;
+        text-shadow: 0 1px 1px rgba(60, 38, 18, 0.5), 0 0 42px rgba(255, 205, 150, 0.28);
+      }
+      #wordmark .rule {
+        display: block;
+        width: min(280px, 34vw);
+        height: 1px;
+        margin: clamp(10px, 1.6vw, 18px) auto 0;
+        background: linear-gradient(90deg, transparent, var(--brass-dim) 18%, var(--brass) 50%, var(--brass-dim) 82%, transparent);
+        opacity: 0.75;
+      }
+      #wordmark .sub {
+        display: block;
+        margin-top: 12px;
+        font: 400 clamp(9px, 1.05vw, 12px) / 1 ui-rounded, "Segoe UI", system-ui, sans-serif;
         letter-spacing: 0.42em;
         text-indent: 0.42em;
-        text-shadow: 0 2px 30px rgba(40, 30, 80, 0.35);
-        opacity: 0.94;
-        transition: opacity 2.4s ease, transform 2.4s ease;
-        z-index: 4;
+        text-transform: uppercase;
+        color: rgba(245, 236, 223, 0.58);
       }
       body.gust-playing #wordmark {
         opacity: 0;
-        transform: translateY(-14px);
+        transform: translateY(-18px);
+        filter: blur(2px);
+      }
+
+      /* ── the first-line instruction, gone as soon as a hand moves ──────── */
+      #invitation {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: clamp(18px, 3.2vh, 34px);
+        text-align: center;
+        pointer-events: none;
+        z-index: 5;
+        font: 400 clamp(11px, 1.2vw, 13px) / 1.6 ui-rounded, "Segoe UI", system-ui, sans-serif;
+        letter-spacing: 0.16em;
+        color: rgba(246, 235, 219, 0.66);
+        text-shadow: 0 1px 14px rgba(0, 0, 0, 0.7);
+        transition: opacity 1.4s ease, transform 1.4s ease;
+        opacity: 0;
+        animation: rise 1.8s ease 1.1s forwards;
+      }
+      #invitation b {
+        font-weight: 500;
+        color: rgba(255, 226, 184, 0.92);
+      }
+      body.gust-playing #invitation {
+        opacity: 0 !important;
+        transform: translateY(8px);
+      }
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
+
+      /* the console's own pill, if the SDK ever draws one, is left alone */
+      @media (prefers-reduced-motion: reduce) {
+        #wordmark, #invitation { animation: none; transition: none; }
       }
     </style>
   </head>
   <body>
     <div id="scene-container"></div>
-    <div id="wordmark" aria-hidden="true">GUST</div>
+    <div id="wordmark" aria-hidden="true">
+      <span class="name">GUST</span>
+      <span class="rule"></span>
+      <span class="sub">The Wind Cabinet</span>
+    </div>
+    <p id="invitation">move your hand slowly past the seed — <b>the air is the only thing you can touch</b></p>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>
