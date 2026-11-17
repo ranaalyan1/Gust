@@ -152,6 +152,7 @@ export class GustSystem extends createSystem({}) {
   private subCount = 1;
   private readonly live: [HandSample | null, HandSample | null] = [null, null];
   private planeZ = 0;
+  private planeClock = 0;
 
   // scene
   private readonly root = new Group();
@@ -629,7 +630,14 @@ export class GustSystem extends createSystem({}) {
     const ps = this.pointerState;
     const lead = this.game.lead;
     const targetZ = lead ? lead.pos.z * 0.85 : this.game.course.dandelion.z;
-    this.planeZ += (targetZ - this.planeZ) * 0.08;
+    // Ease by elapsed time, not by frame. The old `* 0.08` per frame made the
+    // play plane take ~0.5 s to follow the seed at 60 fps and several seconds
+    // on a slow device, so the pointer hit the wrong depth exactly when the
+    // machine was struggling.
+    const now = performance.now();
+    const elapsed = this.planeClock > 0 ? Math.min(0.25, (now - this.planeClock) / 1000) : 1 / 60;
+    this.planeClock = now;
+    this.planeZ += (targetZ - this.planeZ) * (1 - Math.exp(-elapsed * 4.8));
     ps.present = false;
     if (this.pointer.present) {
       const cam = this.camera;

@@ -243,3 +243,16 @@ after at 1280×800 (`?ghost=1`, `?stage=2`, default dawn).
   the headless browser, which drops to about 5 fps during gestures. That is
   unresolved: it may be the software renderer, or a gesture-timing problem at
   low frame rates. It needs a live run at full frame rate or a headset.
+
+## Fourth pass, gesture check
+
+- **Frame-rate bug fixed.** The mouse's play plane eased toward the seed's depth
+  by 8% *per frame* (`src/systems/gust.ts`). It now eases by elapsed time with
+  the same rate at 60 fps, so a slow device no longer aims the pointer at the
+  wrong depth for seconds.
+- **The pluck is still not reproduced in the browser.** The core test
+  (`tests/pointer.test.ts`, one flick plucks the seed) passes, so the recogniser
+  works in simulation. The headless shell did not pluck on sweeps at 7–18 fps,
+  even through the seed's screen position and with fast flicks. The cause is
+  unresolved; the next step is a live run with the seed's sim position logged
+  against the pointer's play-plane position.
