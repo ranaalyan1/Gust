@@ -25,13 +25,15 @@ import {
   Points,
   Quaternion,
   ShaderMaterial,
+  Sprite,
+  SpriteMaterial,
   Vector3,
 } from '@iwsdk/core';
 import type { Seed } from '../core/seed.js';
 import type { Course } from '../core/course.js';
 import { islandTop } from '../core/terrain.js';
 import { FlatBuilder } from './build.js';
-import { blobShadowMaterial } from './blob.js';
+import { blobShadowMaterial, blobTexture } from './blob.js';
 
 export const MAX_SEEDS = 48;
 
@@ -335,6 +337,23 @@ export function buildDandelion(course: Course): Group {
   );
   head.position.set(0, course.seedCount > 1 ? h : h + course.headRadius - 0.12, 0);
   g.add(head);
+  // A glow behind the head. The receptacle is a 2.5 mm icosahedron at this
+  // scale, and against the dark glass it was lost; the dandelion must be the
+  // brightest point in the case, so a soft additive halo carries it.
+  const halo = new Sprite(
+    new SpriteMaterial({
+      map: blobTexture(),
+      color: 0xffe6b0,
+      transparent: true,
+      opacity: course.seedCount > 1 ? 0.7 : 0.55,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    }),
+  );
+  const haloH = course.seedCount > 1 ? h : h + course.headRadius - 0.12;
+  halo.scale.setScalar(course.seedCount > 1 ? 0.9 : 0.42);
+  halo.position.set(0, haloH, 0);
+  g.add(halo);
   g.position.set(d.x, ground, d.z);
   return g;
 }

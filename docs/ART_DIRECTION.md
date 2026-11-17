@@ -231,3 +231,15 @@ after at 1280×800 (`?ghost=1`, `?stage=2`, default dawn).
   now, but the silhouette still needs a proper gate form.
 - **Seed contrast.** The dandelion head is small and pale against the dark
   glass in the first frame; it should be the brightest thing in the case.
+
+## Fourth pass, continued: the dandelion
+
+- **Halo behind the receptacle** (`buildDandelion` in `src/render/seeds.ts`): a
+  soft additive sprite from the existing blob texture. The head is a 2.5 mm
+  icosahedron at 1:30 and was lost against the dark glass; the halo makes it the
+  brightest point in the case. Flocks get a larger, fainter halo.
+- Gameplay was re-checked at 960×600 with the diagnostics overlay. The right
+  hand is tracked during a mouse sweep (`R✓`), but the sweep did not pluck in
+  the headless browser, which drops to about 5 fps during gestures. That is
+  unresolved: it may be the software renderer, or a gesture-timing problem at
+  low frame rates. It needs a live run at full frame rate or a headset.
