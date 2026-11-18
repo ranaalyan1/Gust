@@ -203,3 +203,56 @@ tests), build succeeds.
   positioned at the wind's origin.
 - **Levels against the real mix.** The compressor thresholds were tuned before
   the chord moved; the pad may now sit too hot during a storm.
+
+---
+
+# Fourth pass: the first frame
+
+Checked by running the real build headlessly and reading the frames, not by
+reasoning about the code. Four things were visibly wrong on first load:
+
+| Defect | Fix |
+| --- | --- |
+| The **GUST** title was centred at 15% and sat on the dandelion head and the glass of the bell jar on every cold start. | Moved to a band above the jar (`clamp(56px, 8.5vh, 96px)`), smaller, clear of the Enter XR control. It still leaves on the first pluck. |
+| The lamp arm stopped at the middle of the shade, so the shade looked like it floated beside its arm. | The shade now hangs from its apex (the arm ends at the cone tip), with a small brass knuckle at the join. |
+| The desk's brass rim was a bright 8-sided wire crossing the whole frame. | Thicker, darker, worn brass (`darkBrass`), so it reads as the edge of a table rather than a neon line. |
+| The plaque was a dark strip in the shadow of the jar's foot, and its name was under six pixels tall on screen. | Texture 640×160 → 1024×256, brighter brass base, larger engraving, a faint emissive so it reads in shadow. The wear mottle was also a sine that striped the plate at the higher resolution; it is now a soft mottle. |
+
+Verified: `tsc --noEmit` clean, **168/168 tests**. Frames compared before and
+after at 1280×800 (`?ghost=1`, `?stage=2`, default dawn).
+
+## Not verified, and still open
+
+- **Gameplay under real input.** In the headless browser the renderer runs at
+  about 6 fps, so a scripted mouse sweep did not register as a pluck. The
+  ghost run does pluck, so the core works; whether a human sweep feels right
+  needs a live run at full frame rate or a headset.
+- **The Storm Gate reads as a dark box** from this camera. It is chiselled
+  now, but the silhouette still needs a proper gate form.
+- **Seed contrast.** The dandelion head is small and pale against the dark
+  glass in the first frame; it should be the brightest thing in the case.
+
+## Fourth pass, continued: the dandelion
+
+- **Halo behind the receptacle** (`buildDandelion` in `src/render/seeds.ts`): a
+  soft additive sprite from the existing blob texture. The head is a 2.5 mm
+  icosahedron at 1:30 and was lost against the dark glass; the halo makes it the
+  brightest point in the case. Flocks get a larger, fainter halo.
+- Gameplay was re-checked at 960×600 with the diagnostics overlay. The right
+  hand is tracked during a mouse sweep (`R✓`), but the sweep did not pluck in
+  the headless browser, which drops to about 5 fps during gestures. That is
+  unresolved: it may be the software renderer, or a gesture-timing problem at
+  low frame rates. It needs a live run at full frame rate or a headset.
+
+## Fourth pass, gesture check
+
+- **Frame-rate bug fixed.** The mouse's play plane eased toward the seed's depth
+  by 8% *per frame* (`src/systems/gust.ts`). It now eases by elapsed time with
+  the same rate at 60 fps, so a slow device no longer aims the pointer at the
+  wrong depth for seconds.
+- **The pluck is still not reproduced in the browser.** The core test
+  (`tests/pointer.test.ts`, one flick plucks the seed) passes, so the recogniser
+  works in simulation. The headless shell did not pluck on sweeps at 7–18 fps,
+  even through the seed's screen position and with fast flicks. The cause is
+  unresolved; the next step is a live run with the seed's sim position logged
+  against the pointer's play-plane position.
