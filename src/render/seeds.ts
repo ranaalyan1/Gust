@@ -54,19 +54,25 @@ function seedGeometry(): BufferGeometry {
   const w = 0.006;
   b.tri(-w, 0, 0, w, 0, 0, 0, 0.17, 0, stalk);
   b.tri(0, 0, -w, 0, 0, w, 0, 0.17, 0, stalk);
-  // pappus: an open umbrella of filaments
-  const N = 14;
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * 6.283;
-    const tilt = i % 2 === 0 ? 0.19 : 0.15;
-    const rise = i % 2 === 0 ? 0.25 : 0.29;
-    const tx = Math.cos(a) * tilt, tz = Math.sin(a) * tilt;
-    const sx = Math.cos(a + 1.57) * 0.008, sz = Math.sin(a + 1.57) * 0.008;
-    b.tri(-sx, 0.17, -sz, sx, 0.17, sz, tx, rise, tz, i % 2 ? fluff : fluff2);
-    // a tuft at the tip of each filament
-    const t = 0.022;
-    b.tri(tx - sx * 3, rise - t * 0.3, tz - sz * 3, tx + sx * 3, rise - t * 0.3, tz + sz * 3, tx * 1.12, rise + t, tz * 1.12, fluff);
-  }
+  // pappus: a full, open umbrella of filaments, in two rings so it reads as a
+  // seed head at a distance and as fine fibres up close
+  const rings: Array<{ n: number; tilt: number; rise: number; tuft: number; wdt: number }> = [
+    { n: 22, tilt: 0.3, rise: 0.36, tuft: 0.034, wdt: 0.007 },
+    { n: 12, tilt: 0.16, rise: 0.22, tuft: 0.02, wdt: 0.005 },
+  ];
+  rings.forEach((ring, ri) => {
+    for (let i = 0; i < ring.n; i++) {
+      const a = ((i + ri * 0.5) / ring.n) * 6.283;
+      const tilt = ring.tilt * (i % 2 === 0 ? 1 : 0.9);
+      const rise = ring.rise * (i % 2 === 0 ? 1 : 1.06);
+      const tx = Math.cos(a) * tilt, tz = Math.sin(a) * tilt;
+      const sx = Math.cos(a + 1.57) * ring.wdt, sz = Math.sin(a + 1.57) * ring.wdt;
+      b.tri(-sx, 0.17, -sz, sx, 0.17, sz, tx, rise, tz, i % 2 ? fluff : fluff2);
+      // a tuft at the tip of each filament
+      const t = ring.tuft;
+      b.tri(tx - sx * 3, rise - t * 0.3, tz - sz * 3, tx + sx * 3, rise - t * 0.3, tz + sz * 3, tx * 1.12, rise + t, tz * 1.12, fluff);
+    }
+  });
   return b.build();
 }
 

@@ -593,6 +593,18 @@ export class Room {
     knuckle.position.copy(armEnd);
     this.inner.add(this.env(knuckle));
     this.shade.castShadow = true;
+    // a rolled brass rim at the mouth and a cap at the apex: the parts a real
+    // shade is built from, which the bare cone was missing. They are children of
+    // the shade, so they follow its transform exactly.
+    const rimMat = new MeshStandardMaterial({ color: 0xc49a4a, roughness: 0.38, metalness: 0.7 });
+    this.shiny.push(rimMat);
+    const shadeRim = new Mesh(new TorusGeometry(0.135, 0.0055, 10, 48), rimMat);
+    shadeRim.rotation.x = Math.PI / 2;
+    shadeRim.position.set(0, -0.075, 0);
+    this.shade.add(shadeRim);
+    const cap = new Mesh(new CylinderGeometry(0.02, 0.024, 0.016, 18), rimMat);
+    cap.position.set(0, 0.082, 0);
+    this.shade.add(cap);
     this.inner.add(this.env(this.shade));
 
     // the inside of a lit shade is the brightest thing in the room after the

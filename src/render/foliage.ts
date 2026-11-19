@@ -63,18 +63,35 @@ interface Plant {
 }
 
 function grassGeometry(): BufferGeometry {
+  // Each blade is a curved, tapering strip: wide and dark at the root, narrowing
+  // to a lighter point. The bend shader works on height, so the extra segments
+  // make the sway smooth instead of the rigid cone it used to be.
   const b = new FlatBuilder();
-  const c = new Color(1, 1, 1);
-  const dark = new Color(0.84, 0.9, 0.8);
+  const root = new Color(0.66, 0.74, 0.6);
+  const mid = new Color(0.9, 0.96, 0.86);
+  const tip = new Color(1.0, 1.0, 0.94);
+  const SEG = 4;
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + 0.4;
     const r = i === 0 ? 0 : 0.34;
     const ox = Math.cos(a) * r, oz = Math.sin(a) * r;
-    const w = 0.16;
+    const w = i === 0 ? 0.15 : 0.13;
     const h = i === 0 ? 1 : 0.62 + 0.12 * i;
-    const dx = Math.cos(a + 1.57) * w, dz = Math.sin(a + 1.57) * w;
-    const lean = 0.22;
-    b.tri(ox - dx, 0, oz - dz, ox + dx, 0, oz + dz, ox + Math.cos(a) * lean, h, oz + Math.sin(a) * lean, i % 2 ? dark : c);
+    const sx = Math.cos(a + 1.57), sz = Math.sin(a + 1.57);
+    const lean = 0.22 * (i === 0 ? 1 : 0.9);
+    // point on the spine at height t (0..1), leaning out as it rises
+    const spine = (t: number) => [ox + Math.cos(a) * lean * t * t, h * t, oz + Math.sin(a) * lean * t * t] as const;
+    for (let s = 0; s < SEG; s++) {
+      const t0 = s / SEG, t1 = (s + 1) / SEG;
+      const [x0, y0, z0] = spine(t0), [x1, y1, z1] = spine(t1);
+      const w0 = w * Math.pow(1 - t0, 0.85), w1 = w * Math.pow(1 - t1, 0.85);
+      const c0 = (s === 0 ? root : mid).clone();
+      const c1 = (s + 1 === SEG ? tip : mid).clone();
+      if (i % 2) { c0.multiplyScalar(0.94); c1.multiplyScalar(0.94); }
+      // a quad: two triangles, the lower edge a little darker than the upper
+      b.tri(x0 - sx * w0, y0, z0 - sz * w0, x0 + sx * w0, y0, z0 + sz * w0, x1 + sx * w1, y1, z1 + sz * w1, c0);
+      if (w1 > 1e-4) b.tri(x0 - sx * w0, y0, z0 - sz * w0, x1 + sx * w1, y1, z1 + sz * w1, x1 - sx * w1, y1, z1 - sz * w1, c1);
+    }
   }
   return b.build();
 }

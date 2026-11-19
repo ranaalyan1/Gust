@@ -22,8 +22,8 @@ import { type Island, type Obstacle, islandBottom, islandRim, islandTop } from '
 import { hash01 } from '../core/random.js';
 import { FlatBuilder, shade } from './build.js';
 
-const RINGS = 8;
-const SEGS = 46;
+const RINGS = 12;
+const SEGS = 64;
 
 const GRASS = new Color(0x51603a);
 const GRASS_2 = new Color(0x66743f);
