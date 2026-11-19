@@ -318,6 +318,25 @@ export class Room {
   private readonly dustSeeds: Float32Array;
   private readonly backdrop: Mesh;
 
+  /** Everything that belongs to the room rather than the specimen. */
+  private readonly environment: Object3D[] = [];
+
+  /** Register a room object so passthrough can step it out of the frame. */
+  private env<T extends Object3D>(o: T): T {
+    this.environment.push(o);
+    return o;
+  }
+
+  /**
+   * Horizon OS passthrough. The walnut, the paperwork, the shelves and the
+   * backdrop step out of the frame, and the specimen stays: the bell jar, the
+   * islands, the brass and the light. Lights are never in the list, because the
+   * specimen is lit by them.
+   */
+  setPassthrough(on: boolean): void {
+    for (const o of this.environment) o.visible = !on;
+  }
+
   constructor() {
     this.inner.scale.setScalar(ROOM_K);
     this.group.add(this.inner);
@@ -330,13 +349,13 @@ export class Room {
     const table = new Mesh(new CylinderGeometry(TABLE_R, TABLE_R * 0.98, 0.085, 72), wood);
     table.position.y = TABLE_Y - 0.0425;
     table.receiveShadow = true;
-    this.inner.add(table);
+    this.inner.add(this.env(table));
 
     // a turned brass edge, because a bare cylinder edge reads as a cardboard cut-out
     const rim = new Mesh(new TorusGeometry(TABLE_R, 0.018, 10, 96), darkBrass);
     rim.rotation.x = Math.PI / 2;
     rim.position.y = TABLE_Y;
-    this.inner.add(rim);
+    this.inner.add(this.env(rim));
 
     // a leather blotter under the book, square to the room: the desk has a
     // working side and a display side, and only one of them is round
@@ -347,14 +366,14 @@ export class Room {
     blotter.position.set(CASE_R + 0.44, TABLE_Y + 0.007, CASE_R + 0.72);
     blotter.rotation.y = -0.46;
     blotter.receiveShadow = true;
-    this.inner.add(blotter);
+    this.inner.add(this.env(blotter));
     const blotterEdge = new Mesh(
       new BoxGeometry(1.04, 0.0045, 0.025),
       new MeshStandardMaterial({ color: 0x6b6244, roughness: 0.9 }),
     );
     blotterEdge.position.set(blotter.position.x, TABLE_Y + 0.0148, blotter.position.z - 0.38);
     blotterEdge.rotation.y = blotter.rotation.y;
-    this.inner.add(blotterEdge);
+    this.inner.add(this.env(blotterEdge));
 
     // where the bulb ends up, in the room's own frame: the glass needs to know
     // what it is reflecting before it is built
@@ -454,7 +473,7 @@ export class Room {
     // to, which is away from the lamp
     this.causticDesk.position.set(0.055, TABLE_Y + 0.0032, 0.03);
     this.causticDesk.renderOrder = 2;
-    this.inner.add(this.causticDesk);
+    this.inner.add(this.env(this.causticDesk));
 
     this.causticBed = new Mesh(
       new CircleGeometry(CASE_R - 0.055, 64),
@@ -511,7 +530,7 @@ export class Room {
       g.rotation.set(hash01(i * 11) * 3.0, hash01(i * 13) * 3.0, hash01(i * 17) * 3.0);
       g.castShadow = true;
       g.receiveShadow = true;
-      this.inner.add(g);
+      this.inner.add(this.env(g));
     }
 
     // light does not stop at glass. The lamp comes in from the left, so the
@@ -534,7 +553,7 @@ export class Room {
     pool.scale.set(1.0, 0.82, 1);
     pool.position.set(-0.075, TABLE_Y + 0.0455, 0.015);
     pool.renderOrder = 1;
-    this.inner.add(pool);
+    this.inner.add(this.env(pool));
 
     // ── the lamp ──
     const lampX = -1.04;
@@ -542,10 +561,10 @@ export class Room {
     const stemH = 0.78;
     const stem = new Mesh(new CylinderGeometry(0.011, 0.015, stemH, 12), metal);
     stem.position.set(lampX, TABLE_Y + stemH * 0.5, lampZ);
-    this.inner.add(stem);
+    this.inner.add(this.env(stem));
     const foot = new Mesh(new CylinderGeometry(0.10, 0.112, 0.018, 40), metal);
     foot.position.set(lampX, TABLE_Y + 0.009, lampZ);
-    this.inner.add(foot);
+    this.inner.add(this.env(foot));
 
     // arm + shade, angled over the specimen
     // the arm is built from the two points it connects, so it cannot float free
@@ -555,7 +574,7 @@ export class Room {
     const arm = new Mesh(new CylinderGeometry(0.008, 0.008, armDir.length(), 10), metal);
     arm.position.copy(stemTop).addScaledVector(armDir, 0.5);
     arm.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), armDir.clone().normalize());
-    this.inner.add(arm);
+    this.inner.add(this.env(arm));
 
     // The shade hangs from its apex, the way a real shade hangs from its yoke:
     // the arm ends at the cone's tip, not at its centre, so nothing floats.
@@ -572,9 +591,9 @@ export class Room {
     // a small brass knuckle where the arm meets the apex
     const knuckle = new Mesh(new SphereGeometry(0.012, 12, 10), metal);
     knuckle.position.copy(armEnd);
-    this.inner.add(knuckle);
+    this.inner.add(this.env(knuckle));
     this.shade.castShadow = true;
-    this.inner.add(this.shade);
+    this.inner.add(this.env(this.shade));
 
     // the inside of a lit shade is the brightest thing in the room after the
     // bulb: without this the shade reads as a black cut-out from behind
@@ -584,7 +603,7 @@ export class Room {
     );
     shadeIn.position.copy(shadePos);
     shadeIn.rotation.copy(this.shade.rotation);
-    this.inner.add(shadeIn);
+    this.inner.add(this.env(shadeIn));
 
     // the bulb: a small bright sphere, plus the light itself
     const mouth = new Vector3(0, -0.085, 0).applyEuler(this.shade.rotation);
@@ -699,7 +718,7 @@ export class Room {
 
     // ── the paperwork: the ledger, the slips, the plaque, the husks ──
     this.marks = new DeskMarks({ tableY: TABLE_Y, caseR: CASE_R });
-    this.inner.add(this.marks.group);
+    this.inner.add(this.env(this.marks.group));
 
     // ── the dark behind it: shelves, books, jars ──
     const darkWood = new MeshStandardMaterial({
@@ -715,14 +734,14 @@ export class Room {
     this.backdrop = new Mesh(new CylinderGeometry(2.8, 2.8, 3.4, 40, 1, true), darkWood);
     this.backdrop.position.set(0, TABLE_Y + 1.0, -0.3);
     this.backdrop.receiveShadow = true;
-    this.inner.add(this.backdrop);
+    this.inner.add(this.env(this.backdrop));
 
     const floor = new Mesh(
       new CylinderGeometry(2.8, 2.8, 0.02, 40),
       new MeshStandardMaterial({ map: walnut(), color: 0x2c2420, roughness: 0.92 }),
     );
     floor.position.set(0, TABLE_Y - 0.86, -0.3);
-    this.inner.add(floor);
+    this.inner.add(this.env(floor));
 
     const shelfY = [TABLE_Y + 0.46, TABLE_Y + 0.80];
     // A shelf that is not held up by anything is a plank in space. Two iron
@@ -734,24 +753,24 @@ export class Room {
       shelf.position.set(0.30, y, -1.52);
       shelf.castShadow = true;
       shelf.receiveShadow = true;
-      this.inner.add(shelf);
+      this.inner.add(this.env(shelf));
 
       for (const bx of [-0.34, 0.30, 0.94]) {
         // the upright against the wall
         const upright = new Mesh(new BoxGeometry(0.014, 0.15, 0.008), iron);
         upright.position.set(bx, y - 0.075, -1.598);
         upright.castShadow = true;
-        this.inner.add(upright);
+        this.inner.add(this.env(upright));
         // the arm under the plank, and the little strut back to the wall
         const arm = new Mesh(new BoxGeometry(0.010, 0.009, 0.16), iron);
         arm.position.set(bx, y - 0.015, -1.515);
         arm.castShadow = true;
-        this.inner.add(arm);
+        this.inner.add(this.env(arm));
       }
       // the rail the brackets hang from, running the length of the wall
       const rail = new Mesh(new BoxGeometry(1.5, 0.02, 0.018), iron);
       rail.position.set(0.30, y - 0.152, -1.596);
-      this.inner.add(rail);
+      this.inner.add(this.env(rail));
     }
 
     // books: cloth and calf, different heights, one of them read to death. A row
@@ -774,7 +793,7 @@ export class Room {
       book.rotation.z = (hash01(i * 23) - 0.5) * 0.1;
       book.castShadow = true;
       book.receiveShadow = true;
-      this.inner.add(book);
+      this.inner.add(this.env(book));
       // gold bands on a couple of them: the only thing on that wall that catches
       // the lamp
       if (i === 1 || i === 4) {
@@ -782,7 +801,7 @@ export class Room {
           const band = new Mesh(new BoxGeometry(w + 0.0014, 0.004, d * 1.002), metal);
           band.position.set(book.position.x, book.position.y + by, book.position.z);
           band.rotation.z = book.rotation.z;
-          this.inner.add(band);
+          this.inner.add(this.env(band));
         }
       }
       bx += w + 0.0025 + hash01(i * 41) * 0.006;
@@ -794,7 +813,7 @@ export class Room {
           flat.rotation.y = 0.06 + k * 0.03;
           flat.castShadow = true;
           flat.receiveShadow = true;
-          this.inner.add(flat);
+          this.inner.add(this.env(flat));
         }
       }
     }
@@ -808,10 +827,10 @@ export class Room {
         glassMaterial({ rim: 0x8fa6ae }),
       );
       jar.position.set(0.58 + i * 0.13, shelfY[1] + 0.011 + hh / 2, -1.48);
-      this.inner.add(jar);
+      this.inner.add(this.env(jar));
       const lid = new Mesh(new CylinderGeometry(r * 1.02, r * 1.02, 0.008, 18), metal);
       lid.position.set(jar.position.x, shelfY[1] + 0.011 + hh, -1.48);
-      this.inner.add(lid);
+      this.inner.add(this.env(lid));
     }
 
     // ── the near edge: what a working desk has on it that a render does not ──
@@ -839,7 +858,7 @@ export class Room {
     pencil.add(tip);
     pencil.position.set(-0.74, TABLE_Y + 0.0148, 0.66);
     pencil.rotation.set(0, 0.42, 0.02);
-    this.inner.add(pencil);
+    this.inner.add(this.env(pencil));
 
     // a stack of index cards, squared up by hand and not quite square
     const cardMat = new MeshStandardMaterial({ color: 0xd8cead, roughness: 0.96, side: DoubleSide });
@@ -852,7 +871,7 @@ export class Room {
       );
       card.rotation.y = -0.5 + (hash01(i * 7) - 0.5) * 0.075;
       card.castShadow = true;
-      this.inner.add(card);
+      this.inner.add(this.env(card));
     }
 
     // a cup stood here ten minutes ago
@@ -862,7 +881,7 @@ export class Room {
     );
     cupRing.rotation.x = -Math.PI / 2;
     cupRing.position.set(0.62, TABLE_Y + 0.0042, 0.72);
-    this.inner.add(cupRing);
+    this.inner.add(this.env(cupRing));
 
     // a hand lens, laid down face up. Three primitives, and the whole desk
     // becomes somebody's.
@@ -882,7 +901,7 @@ export class Room {
     lensGroup.add(collar2);
     lensGroup.position.set(-0.63, TABLE_Y + 0.0075, 0.16);
     lensGroup.rotation.set(-Math.PI / 2 + 0.06, 0.2, 0.9);
-    this.inner.add(lensGroup);
+    this.inner.add(this.env(lensGroup));
 
     // Everything casts. A single spot light and twelve shadow casters is not a
     // photograph; it is a product shot with the shadow switched off. The reason
@@ -915,7 +934,7 @@ export class Room {
     );
     sheet.rotation.set(-Math.PI / 2, 0, 0.5);
     sheet.position.set(TABLE_R - 0.28, TABLE_Y + 0.0035, -0.62);
-    this.inner.add(sheet);
+    this.inner.add(this.env(sheet));
   }
 
   /** Where the bulb is, in world space, for the lens flare. */
@@ -946,7 +965,7 @@ export class Room {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, y, z);
     mesh.renderOrder = 2;
-    this.inner.add(mesh);
+    this.inner.add(this.env(mesh));
   }
 
   /** The entry being written right now, if any. */
