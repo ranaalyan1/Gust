@@ -15,7 +15,7 @@
 import { type Vec3, clamp01, damp, vec3 } from './vec3.js';
 import { type StreamSource, type ThermalSource, WindField, createStream, createThermal } from './wind.js';
 import { DEFAULT_SEED_PARAMS, type Seed, type SeedEnvironment, type SeedParams, createSeed, stepSeed } from './seed.js';
-import type { HandSample } from './hands.js';
+import { type HandSample, usableHand } from './hands.js';
 import { DEFAULT_GESTURES, type GestureEvent, type GestureParams, HandWind } from './gestures.js';
 import {
   type Course,
@@ -278,7 +278,8 @@ export class Game {
     this.phaseTime += dt;
     this.courseTime += dt;
     this.field.advance(dt);
-    this.hands.update(left, right, dt);
+    // a glitched pose is no hand: it must never reach the seed, where it would stick
+    this.hands.update(usableHand(left), usableHand(right), dt);
     for (let i = 0; i < this.hands.events.length; i++) {
       this.events.push({ type: 'gesture', gesture: this.hands.events[i] });
     }
