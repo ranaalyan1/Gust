@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, CubeCamera, Group, LinearMipmapLinearFilter, Matrix4, Mesh, PerspectiveCamera, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
+import { Color, CubeCamera, DepthOccludable, Group, LinearMipmapLinearFilter, Matrix4, Mesh, OcclusionShadersMode, PerspectiveCamera, SessionMode, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type Entity, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -153,6 +153,10 @@ export class GustSystem extends createSystem({}) {
   private readonly live: [HandSample | null, HandSample | null] = [null, null];
   private planeZ = 0;
   private planeClock = 0;
+  /** True while the headset is showing the real room (passthrough, alpha blend). */
+  private passthrough = false;
+  /** The room's entity: the handle that depth occlusion is switched on through. */
+  private roomEntity: Entity | null = null;
 
   // scene
   private readonly root = new Group();
@@ -274,7 +278,7 @@ export class GustSystem extends createSystem({}) {
     this.room.setJournal(this.journal);
     this.room.setKeeper(this.journal.keeper);
     this.scene.add(this.room.group);
-    this.world.createTransformEntity(this.room.group);
+    this.roomEntity = this.world.createTransformEntity(this.room.group);
 
     // Brass and glass are nothing but their reflections, and a room has no HDR
     // sky to borrow. Render the room into a small cube once, hand it to the
@@ -342,6 +346,8 @@ export class GustSystem extends createSystem({}) {
     this.clouds.mesh.visible = false;
     this.birds.mesh.visible = false; // gulls belong outdoors; the dust is the life in here
     renderer.setClearColor(0x0a0806, 1);
+
+    void this.offerPassthrough();
 
     // ── input ──
     this.pointer = new PointerInput(renderer.domElement);
@@ -1043,6 +1049,80 @@ export class GustSystem extends createSystem({}) {
     }
   }
 
+  // ── Horizon OS passthrough ─────────────────────────────────────────────────
+
+  /**
+   * A second way in, next to the VR one: the specimen comes out of the bell
+   * room and sits in the player's own room, under passthrough. Shown only when
+   * the browser says an AR session is possible, so a flat screen never sees it.
+   */
+  private async offerPassthrough(): Promise<void> {
+    if (typeof navigator === 'undefined' || !navigator.xr) return;
+    let supported = false;
+    try {
+      supported = await navigator.xr.isSessionSupported('immersive-ar');
+    } catch {
+      supported = false;
+    }
+    if (!supported || typeof document === 'undefined') return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Passthrough desk';
+    button.setAttribute('aria-label', 'Enter the headset with passthrough and place the specimen in your room');
+    button.style.cssText =
+      'position:fixed;right:16px;bottom:16px;z-index:6;padding:10px 16px;border-radius:999px;' +
+      'border:1px solid rgba(255,255,255,.35);background:rgba(18,20,30,.72);color:#fff;' +
+      'font:600 13px/1 ui-rounded,"Segoe UI",system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;';
+    button.addEventListener('click', () => {
+      // Depth is asked for as optional: a device without it still gets the
+      // passthrough desk, just without the real furniture passing in front.
+      this.world.launchXR({
+        sessionMode: SessionMode.ImmersiveAR,
+        features: {
+          handTracking: true,
+          depthSensing: { required: false, usage: 'gpu-optimized', format: 'float32' },
+        },
+      });
+    });
+    document.body.appendChild(button);
+    this.cleanupFuncs.push(() => button.remove());
+  }
+
+  /**
+   * The session has started. In passthrough the clear colour must be fully
+   * transparent, or it paints the real room black, and the room's own furniture
+   * steps out of the frame. A VR session keeps the dark room exactly as before.
+   */
+  private enterSession(): void {
+    const blend = this.renderer.xr.getSession()?.environmentBlendMode;
+    this.passthrough = blend === 'alpha-blend' || blend === 'additive';
+    this.renderer.setClearColor(0x0a0806, this.passthrough ? 0 : 1);
+    this.room.setPassthrough(this.passthrough);
+    this.setDepthOcclusion(this.passthrough);
+  }
+
+  /**
+   * The real room's depth decides what sits in front of the desk: a hand or a
+   * chair edge in front of the bell hides it. Only the passthrough session turns
+   * this on, so the dark VR room never takes the depth path.
+   */
+  private setDepthOcclusion(on: boolean): void {
+    const e = this.roomEntity;
+    if (!e) return;
+    if (on && !e.hasComponent(DepthOccludable)) {
+      e.addComponent(DepthOccludable, { mode: OcclusionShadersMode.SoftOcclusion });
+    } else if (!on && e.hasComponent(DepthOccludable)) {
+      e.removeComponent(DepthOccludable);
+    }
+  }
+
+  private leaveSession(): void {
+    this.passthrough = false;
+    this.renderer.setClearColor(0x0a0806, 1);
+    this.room.setPassthrough(false);
+    this.setDepthOcclusion(false);
+  }
+
   // ── desktop hint (three icons' worth of words; never shown in the headset) ─
 
   private buildHud(): void {
@@ -1095,6 +1175,9 @@ export class GustSystem extends createSystem({}) {
     if (presenting && !this.wasPresenting) {
       this.audio.start();
       this.anchored = false;
+      this.enterSession();
+    } else if (!presenting && this.wasPresenting) {
+      this.leaveSession();
     }
     this.wasPresenting = presenting;
 

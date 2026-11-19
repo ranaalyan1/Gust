@@ -256,3 +256,20 @@ after at 1280×800 (`?ghost=1`, `?stage=2`, default dawn).
   even through the seed's screen position and with fast flicks. The cause is
   unresolved; the next step is a live run with the seed's sim position logged
   against the pointer's play-plane position.
+
+## Fifth pass, detail in the case
+
+- **Lamp.** The shade now has a rolled brass rim at its mouth and a cap at its
+  apex, built as children of the shade so they follow its transform. The bulb,
+  the light and the shadow positions are unchanged.
+- **Grass.** Each blade is a curved, tapering strip of four segments: dark at the
+  root, pale at the tip. The bend shader works on height, so the sway is smooth.
+  The blade count and placement are unchanged.
+- **Dandelion.** The seed head has 22 filaments in an outer ring and 12 in an
+  inner ring, with larger tufts. The stalk and achene are unchanged, and the
+  collision and the hang point are untouched.
+- **Islands.** The mesh is finer (12 rings by 64 segments, up from 8 by 46). The
+  silhouette is still the analytic one, so gameplay is the same. The islands
+  still read as small lumps. A proper rework of their shape is open.
+- Verified: `tsc --noEmit` clean, vitest 168/168, `npm run build` succeeds, and
+  a flat-view capture at 1280×800 shows no page errors.
