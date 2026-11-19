@@ -78,3 +78,29 @@ and `PRIVACY.md` does not yet cover camera access.
 
 Verification: `tsc --noEmit` clean, 168/168 tests, production build succeeds, and
 the passthrough session was started and inspected in the IWER emulator.
+
+## Depth occlusion in the passthrough desk
+
+- The passthrough session asks for `depth-sensing` as an **optional** feature
+  (`gust.ts`, `offerPassthrough`), with `usage: gpu-optimized` and
+  `format: float32`. A device without depth still gets the desk, without the
+  real furniture passing in front of it.
+- `DepthSensingSystem` is registered once in `src/index.ts`, with the recipe's
+  config. It does nothing outside an AR session that has depth.
+- The room's entity gets `DepthOccludable` only while a passthrough session is
+  active, and loses it on exit. The VR room never takes the depth path.
+- Checked in the IWER emulator: the button starts an `alpha-blend` session, the
+  room entity exists, and there are no page errors. The emulator has no depth
+  data, so the occlusion itself is not verified. Real-room occlusion needs a
+  Quest 3 or 3S.
+
+## Hand input
+
+- `src/input/xrHands.ts` turns a tracked hand into a palm pose and joints. It
+  uses the wrist, index and pinky joints. A hand that loses tracking reads as
+  absent, and it does not fall back to a controller. Controllers are used only
+  when there is no hand source.
+- `tests/xrHands.test.ts` covers the tracked hand, the lost hand, the controller
+  fallback, and the cleared state with no frame. These run in plain Node.
+- Real hand input is not verified here. It needs a Quest 3 or 3S, and the
+  hand-only path has to be checked there before the submission.

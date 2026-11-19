@@ -10,7 +10,7 @@
  *   2. The first rendered frame is measured and logged, so cold start is a
  *      number rather than a feeling (?perf=1 / ?diag=1 show it live).
  */
-import { World } from '@iwsdk/core';
+import { DepthSensingSystem, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { markOnce } from './boot/diag.js';
 import { installStartupGuard, showFallback } from './boot/guard.js';
@@ -24,6 +24,11 @@ const container = document.getElementById('scene-container') as HTMLDivElement;
 World.create(container, projectOptions)
   .then((world) => {
     markOnce('world');
+    // Depth sensing for passthrough: the system does nothing until an AR session
+    // asks for depth, so the desk-only VR path is untouched.
+    world.registerSystem(DepthSensingSystem, {
+      configData: { enableDepthTexture: true, enableOcclusion: true, useFloat32: true, blurRadius: 20 },
+    });
     world.registerSystem(GustSystem);
   })
   .catch((error: unknown) => {

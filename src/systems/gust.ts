@@ -11,7 +11,7 @@
  *   net     "missionRequest"                             ->  /api/mission -> game
  *   disk    "runComplete"                                ->  localStorage
  */
-import { Color, CubeCamera, Group, LinearMipmapLinearFilter, Matrix4, Mesh, PerspectiveCamera, SessionMode, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type ShaderMaterial } from '@iwsdk/core';
+import { Color, CubeCamera, DepthOccludable, Group, LinearMipmapLinearFilter, Matrix4, Mesh, OcclusionShadersMode, PerspectiveCamera, SessionMode, Vector2, Vector3, WebGLCubeRenderTarget, createSystem, IcosahedronGeometry, type Entity, type ShaderMaterial } from '@iwsdk/core';
 import {
   DEFAULT_GESTURES,
   FIXED_DT,
@@ -155,6 +155,8 @@ export class GustSystem extends createSystem({}) {
   private planeClock = 0;
   /** True while the headset is showing the real room (passthrough, alpha blend). */
   private passthrough = false;
+  /** The room's entity: the handle that depth occlusion is switched on through. */
+  private roomEntity: Entity | null = null;
 
   // scene
   private readonly root = new Group();
@@ -276,7 +278,7 @@ export class GustSystem extends createSystem({}) {
     this.room.setJournal(this.journal);
     this.room.setKeeper(this.journal.keeper);
     this.scene.add(this.room.group);
-    this.world.createTransformEntity(this.room.group);
+    this.roomEntity = this.world.createTransformEntity(this.room.group);
 
     // Brass and glass are nothing but their reflections, and a room has no HDR
     // sky to borrow. Render the room into a small cube once, hand it to the
@@ -1072,7 +1074,15 @@ export class GustSystem extends createSystem({}) {
       'border:1px solid rgba(255,255,255,.35);background:rgba(18,20,30,.72);color:#fff;' +
       'font:600 13px/1 ui-rounded,"Segoe UI",system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;';
     button.addEventListener('click', () => {
-      this.world.launchXR({ sessionMode: SessionMode.ImmersiveAR });
+      // Depth is asked for as optional: a device without it still gets the
+      // passthrough desk, just without the real furniture passing in front.
+      this.world.launchXR({
+        sessionMode: SessionMode.ImmersiveAR,
+        features: {
+          handTracking: true,
+          depthSensing: { required: false, usage: 'gpu-optimized', format: 'float32' },
+        },
+      });
     });
     document.body.appendChild(button);
     this.cleanupFuncs.push(() => button.remove());
@@ -1088,12 +1098,29 @@ export class GustSystem extends createSystem({}) {
     this.passthrough = blend === 'alpha-blend' || blend === 'additive';
     this.renderer.setClearColor(0x0a0806, this.passthrough ? 0 : 1);
     this.room.setPassthrough(this.passthrough);
+    this.setDepthOcclusion(this.passthrough);
+  }
+
+  /**
+   * The real room's depth decides what sits in front of the desk: a hand or a
+   * chair edge in front of the bell hides it. Only the passthrough session turns
+   * this on, so the dark VR room never takes the depth path.
+   */
+  private setDepthOcclusion(on: boolean): void {
+    const e = this.roomEntity;
+    if (!e) return;
+    if (on && !e.hasComponent(DepthOccludable)) {
+      e.addComponent(DepthOccludable, { mode: OcclusionShadersMode.SoftOcclusion });
+    } else if (!on && e.hasComponent(DepthOccludable)) {
+      e.removeComponent(DepthOccludable);
+    }
   }
 
   private leaveSession(): void {
     this.passthrough = false;
     this.renderer.setClearColor(0x0a0806, 1);
     this.room.setPassthrough(false);
+    this.setDepthOcclusion(false);
   }
 
   // ── desktop hint (three icons' worth of words; never shown in the headset) ─
