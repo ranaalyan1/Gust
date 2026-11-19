@@ -126,7 +126,11 @@ export class GustSystem extends createSystem({}) {
   /** ?perf=1 / ?diag=1 — measured numbers, never shown to a player. */
   private readonly overlay = new Overlay(diagMode());
   /** The XR frame-time monitor: degrades knobs, never the picture. */
+  // Headset: 72 Hz is the bar. A desk has no fixed refresh, and a 60 Hz monitor
+  // averages 16.7 ms a frame, so the desk bar sits at about 45 fps: only a machine
+  // that is really struggling trades shadow cadence for frame time.
   private readonly frames = new FrameGuard({ budgetMs: 13.9, sustain: 2, maxTier: 2 });
+  private readonly deskFrames = new FrameGuard({ budgetMs: 22, sustain: 2, maxTier: 2 });
   private shadowEvery = 1;
   private frameCount = 0;
   private fpsSmoothed = 60;
@@ -369,6 +373,7 @@ export class GustSystem extends createSystem({}) {
         this.paused = document.hidden;
         this.audio.setPaused(this.paused);
         this.frames.reset();
+        this.deskFrames.reset();
       };
       document.addEventListener('visibilitychange', onVisibility);
       this.cleanupFuncs.push(() => document.removeEventListener('visibilitychange', onVisibility));
@@ -459,12 +464,10 @@ export class GustSystem extends createSystem({}) {
       );
     }
     if (dt > 0 && !this.paused) this.fpsSmoothed += (1 / dt - this.fpsSmoothed) * 0.08;
-    // The frame monitor is a headset instrument: on a desk the picture is worth
-    // more than the frame, and there is no fixed refresh to miss.
-    if (this.renderer.xr.isPresenting) {
-      const tier = this.frames.push(dt);
-      if (tier !== null) this.applyTier(tier);
-    }
+    // The same guard runs on the desk, with the looser bar above, so a slow machine
+    // stops paying for shadows it cannot afford.
+    const tier = (this.renderer.xr.isPresenting ? this.frames : this.deskFrames).push(dt);
+    if (tier !== null) this.applyTier(tier);
   }
 
   /**
@@ -476,10 +479,12 @@ export class GustSystem extends createSystem({}) {
   private applyTier(tier: number): void {
     this.shadowEvery = tier >= 2 ? 3 : tier >= 1 ? 2 : 1;
     this.streaks.setDensity(tier >= 2 ? 0.45 : tier >= 1 ? 0.7 : 1);
-    try {
-      this.renderer.xr.setFoveation(tier >= 2 ? 0.55 : 0);
-    } catch {
-      /* foveation is optional and unimplemented on some runtimes */
+    if (this.renderer.xr.isPresenting) {
+      try {
+        this.renderer.xr.setFoveation(tier >= 2 ? 0.55 : 0);
+      } catch {
+        /* foveation is optional and unimplemented on some runtimes */
+      }
     }
   }
 
@@ -492,7 +497,7 @@ export class GustSystem extends createSystem({}) {
     if (this.overlay.mode !== 'diag') return lines;
     const first = marks['first-frame'];
     lines.push(`cold start ${first === undefined ? '—' : first.toFixed(0) + ' ms'}`);
-    lines.push(`act ${game.stage + 1}/4  ${game.phase}  tier ${this.frames.tier}  shadows 1/${this.shadowEvery}`);
+    lines.push(`act ${game.stage + 1}/4  ${game.phase}  tier ${(this.renderer.xr.isPresenting ? this.frames : this.deskFrames).tier}  shadows 1/${this.shadowEvery}`);
     const hand = this.renderer.xr.isPresenting ? 'xr' : 'desk';
     const lost = this.handLostSince.map((t, i) => (t >= 0 && !this.live[i] ? `L${i ? 'R' : 'L'} lost ${(this.time - t).toFixed(1)}s` : '')).filter(Boolean);
     lines.push(`hands ${hand}  ${this.live[0] ? 'L✓' : 'L·'} ${this.live[1] ? 'R✓' : 'R·'}  re-acquired ${this.handReacquired}${lost.length ? '  ' + lost.join(' ') : ''}`);

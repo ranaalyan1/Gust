@@ -5,8 +5,20 @@
  * controllers, the mouse-as-hand fallback and the scripted ghost player all
  * produce HandSamples; the physics never knows — or cares — which.
  */
-import { type Vec3, clamp, damp, smoothstep, vec3 } from './vec3.js';
+import { type Vec3, clamp, damp, isFiniteVec, smoothstep, vec3 } from './vec3.js';
 import type { StreamSource } from './wind.js';
+
+/**
+ * A hand the simulation can safely read. A tracking glitch can hand over a pose
+ * with a NaN or infinite coordinate. One such sample, taken as a hand, poisons
+ * the seed's position for good: the seed then sits invisible and the game stalls
+ * with no error. So a non-finite hand is treated as no hand at all, which resets
+ * the recogniser exactly as a lost hand does.
+ */
+export function usableHand(hand: HandSample | null): HandSample | null {
+  if (hand === null) return null;
+  return isFiniteVec(hand.position) && isFiniteVec(hand.palmNormal) && isFiniteVec(hand.velocity) ? hand : null;
+}
 
 export interface HandSample {
   /** Palm centre, in simulation space (m). */

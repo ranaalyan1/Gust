@@ -273,3 +273,18 @@ after at 1280×800 (`?ghost=1`, `?stage=2`, default dawn).
   still read as small lumps. A proper rework of their shape is open.
 - Verified: `tsc --noEmit` clean, vitest 168/168, `npm run build` succeeds, and
   a flat-view capture at 1280×800 shows no page errors.
+
+## Sixth pass, input safety and the desk's frame budget
+
+- **A glitched hand no longer freezes the seed.** One non-finite pose (NaN or
+  infinity) used to reach the seed and stick there: the seed stayed invisible
+  and the game stalled with no error. `Game.step` now treats such a pose as no
+  hand at all, which resets the recogniser like a lost hand does. Regression
+  test: `tests/input-guard.test.ts`, which fails without the guard.
+- **The desk now runs the frame guard too.** At about 45 fps (a 22 ms budget,
+  so a 60 Hz monitor never trips it), a sustained struggle lowers the shadow
+  cadence and the wind-streak density, the same knobs the headset uses. Foveation
+  stays headset-only. On a machine that keeps up, nothing changes.
+- Measured on the desk path: a shadow frame costs about 65 draw calls and 21k
+  triangles more than a frame without shadows (239 vs 174 calls, 59k vs 38k tris),
+  so the guard's cadence matters on slow hardware.
